@@ -1,0 +1,20 @@
+.panel { --accent: var(--promise); background: linear-gradient(180deg, rgba(40,50,72,.35), transparent 130px), var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 12px; padding: 1rem; min-width: 0; box-shadow: 0 16px 40px rgba(0,0,0,.16); }
+.panel.observable { --accent: var(--observable); }
+header { display:flex; align-items:flex-end; justify-content:space-between; border-bottom:1px solid var(--line); padding-bottom:.8rem; }
+.eyebrow { color:var(--muted); font:700 .58rem var(--mono); letter-spacing:.12em; }
+h2 { margin:.18rem 0 0; font:850 1.35rem/1 var(--sans); letter-spacing:.045em; color:var(--text); }
+.kind { border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--accent); border-radius:99px; padding:.28rem .48rem; font:700 .58rem var(--mono); }
+.description { color:var(--text-soft); font-size:.74rem; line-height:1.45; min-height:2.15rem; }
+.panel-actions { display:flex; gap:.5rem; margin:.9rem 0; }
+button { font:700 .68rem var(--mono); letter-spacing:.05em; border-radius:7px; padding:.62rem .78rem; cursor:pointer; transition:.15s; }
+button:disabled { opacity:.42; cursor:not-allowed; }
+.run-side { color:#081018; background:var(--accent); border:1px solid var(--accent); }.run-side:hover:not(:disabled){filter:brightness(1.12); transform:translateY(-1px)}
+.cancel { color:var(--red); background:rgba(255,91,107,.06); border:1px solid rgba(255,91,107,.35); }
+.result-box { position:relative; background:#090d15; border:1px solid var(--line); border-radius:9px; padding:.8rem; min-height:84px; }
+.result-box.loading { border-color:color-mix(in srgb, var(--accent) 42%, var(--line)); box-shadow:inset 0 0 25px color-mix(in srgb, var(--accent) 5%, transparent); }
+.status-row { display:flex;gap:.4rem;align-items:center;color:var(--muted);font:700 .59rem var(--mono);letter-spacing:.08em}.status-dot{width:6px;height:6px;border-radius:50%;background:#526078}.loading .status-dot{background:var(--accent);animation:pulse 1s infinite}.has-result .status-dot{background:var(--green)}
+.placeholder { color:#566176;font-size:.72rem;margin-top:1.05rem}.result{color:var(--text);font:700 1rem/1.35 var(--mono);margin-top:.8rem}.progress-track{height:7px;background:#1a2130;border-radius:10px;overflow:hidden;margin-top:1.05rem;width:calc(100% - 42px)}.progress-track span{display:block;height:100%;background:var(--accent);transition:width .22s linear}.progress-label{position:absolute;right:.8rem;top:2.68rem;font:.68rem var(--mono);color:var(--accent)}
+@keyframes pulse{50%{box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 14%,transparent)}}
+:host-context(.presentation) .panel{padding:.78rem}:host-context(.presentation) h2{font-size:1.65rem}:host-context(.presentation) .eyebrow{font-size:.62rem}:host-context(.presentation) .kind{font-size:.64rem}:host-context(.presentation) .description{min-height:0;margin:.55rem 0;font-size:.7rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}:host-context(.presentation) .panel-actions{margin:.55rem 0}:host-context(.presentation) .run-side,:host-context(.presentation) .cancel{padding:.5rem .65rem;font-size:.61rem}:host-context(.presentation) .result-box{min-height:68px;padding:.62rem}:host-context(.presentation) .result{font-size:1.08rem;margin-top:.55rem}
+button:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){button,.progress-track span{transition:none}.loading .status-dot{animation:none}}

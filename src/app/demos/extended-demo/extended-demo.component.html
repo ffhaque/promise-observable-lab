@@ -1,0 +1,44 @@
+<section class="extended-shell">
+  <header class="scenario-head">
+    <div><span>{{ spec.eyebrow }}</span><h2>{{ spec.name }}</h2></div>
+    <app-verdict-badge [verdict]="spec.verdict" />
+  </header>
+  <div class="teaching"><b>TEACHING MESSAGE</b><span>{{ spec.message }}</span></div>
+
+  @if (scenarioId() === 'dependent') {
+    <div class="context-switch"><b>SELECT CUSTOMER</b>@for (customer of ['Customer A','Customer B','Customer C']; track customer) { <button (click)="chooseCustomer(customer)">{{ customer }}</button> }<strong>CURRENT: {{ selectedContext || '—' }}</strong></div>
+  }
+  @if (scenarioId() === 'live-stream') {
+    <div class="stream-controls"><button type="button" (click)="runBoth()" [disabled]="isRunning">▶ START</button><button type="button" (click)="pause()" [disabled]="!observableState.loading">Ⅱ PAUSE</button><button type="button" (click)="resume()" [disabled]="!paused">▶ RESUME</button><button type="button" (click)="stop()" [disabled]="!observableState.loading && !paused">■ STOP</button><span role="status">{{ paused ? 'Ⅱ PAUSED' : observableState.loading ? '● LIVE' : '■ STOPPED' }}</span></div>
+  }
+  @if (scenarioId() === 'lifecycle') {
+    <div class="lifecycle-state"><span>COMPONENT {{ mounted ? 'MOUNTED' : 'UNMOUNTED' }}</span><span>NAVIGATION {{ navigatedAway ? 'AWAY' : 'ACTIVE' }}</span></div>
+  }
+
+  <div class="master"><button type="button" class="run" [disabled]="isRunning" (click)="runBoth()">{{ isRunning ? '● RUNNING' : '▶ RUN BOTH' }} <small>SHARED CLOCK</small></button><button type="button" (click)="reset()">↺ RESET</button></div>
+
+  <app-primary-result [label]="primaryResult.label" [promiseValue]="primaryResult.promise" [observableValue]="primaryResult.observable" [promiseDetail]="primaryResult.promiseDetail" [observableDetail]="primaryResult.observableDetail" [note]="primaryResult.note" />
+
+  <div class="visual-grid">
+    <section class="visual promise-visual"><header>PROMISE BEHAVIOR</header>
+      @for (item of promiseItems; track $index) { <div class="item" [class]="'item ' + item.status"><span>{{ item.label }}</span><b>{{ item.status === 'loading' ? 'RUNNING' : item.status.toUpperCase() }}</b></div> }
+      @if (!promiseItems.length) { <p>{{ spec.promise }}</p> }
+    </section>
+    <section class="visual observable-visual"><header>OBSERVABLE BEHAVIOR</header>
+      @for (item of observableItems; track $index) { <div class="item" [class]="'item ' + item.status"><span>{{ item.label }}</span><b>{{ item.status === 'loading' ? 'RUNNING' : item.status.toUpperCase() }}</b></div> }
+      @if (!observableItems.length) { <p>{{ spec.observable }}</p> }
+    </section>
+  </div>
+
+  @if (scenarioId() === 'progressive') { <div class="honesty">Promises can also be handled independently to progressively render sections. Promise.all is shown because this operation is treated as one aggregate result.</div> }
+  @if (scenarioId() === 'timeout') { <div class="pipeline">PRIMARY API <i>→</i> API vs 2s TIMEOUT <i>→</i> CACHE FALLBACK 150ms <i>→</i> FINAL SOURCE: CACHE</div> }
+  @if (scenarioId() === 'lifecycle') { <div class="honesty">Promise work can also be cancelled by explicitly propagating AbortController. This demo shows the behavior when that cooperation is not added.</div> }
+  @if (scenarioId() === 'save') { <div class="shape-flow"><span>CLICK</span><i>↓</i><b>ONE OPERATION</b><i>↓</i><span>ONE RESULT</span><strong>async/await expresses this shape directly.</strong></div> }
+  @if (scenarioId() === 'live-stream') { <div class="shape-flow"><span>REQUEST</span><i>↓</i><b>ONE BATCH</b><i>↔</i><b>EVENTS OVER TIME</b><i>↓</i><span>TEARDOWN</span></div> }
+  @if (scenarioId() === 'parallel') { <div class="shape-flow"><span>USER</span><span>PERMISSIONS</span><span>SETTINGS</span><i>→</i><b>WAIT FOR SLOWEST</b><strong>Promise.all and forkJoin model the same fixed aggregate.</strong></div> }
+
+  <div class="panels">
+    <app-comparison-panel side="promise" [state]="promiseState" [refreshToken]="renderToken(promiseState)" [description]="spec.promise" [code]="spec.promiseCode" [badge]="spec.verdict === 'promise' ? 'SIMPLE FIT' : 'ASYNC/AWAIT'" actionLabel="RUN PROMISE" loadingText="PROMISE WORK ACTIVE" (run)="runSide('promise')" (toggleCode)="toggleCode('promise')" />
+    <app-comparison-panel side="observable" [state]="observableState" [refreshToken]="renderToken(observableState)" [description]="spec.observable" [code]="spec.observableCode" [badge]="scenarioId() === 'parallel' ? 'FORKJOIN' : scenarioId() === 'timeout' ? 'TIMEOUT' : 'RXJS PIPELINE'" actionLabel="RUN OBSERVABLE" loadingText="OBSERVABLE ACTIVE" (run)="runSide('observable')" (toggleCode)="toggleCode('observable')" />
+  </div>
+</section>
