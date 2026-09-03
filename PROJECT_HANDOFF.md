@@ -1,184 +1,129 @@
 # Promise vs Observable Lab — Project Handoff
 
-## Status
+## Current status
 
-The Angular 22 teaching lab now contains 13 working, side-by-side scenarios. They are organized as a learning path rather than a flat list, use a shared comparison clock, and label every conclusion with one of four honest verdicts:
+The Angular 22 lab is now a short technical presentation with six demonstrations and a final Decision Guide.
 
-- Observable Advantage
-- Promise Advantage
-- Both Are Good
-- Different Problem Shape
+| # | Demonstration | Verdict | Main lesson |
+|---|---|---|---|
+| 1 | Baseline Request | Both Are Good | One-shot work has equivalent runtime. |
+| 2 | Search Under Load | Observable Advantage | Cancellation recovers constrained capacity. |
+| 3 | Rapid Selection Workflow | Observable Advantage | `switchMap` replaces an obsolete whole workflow. |
+| 4 | Live Dashboard | Different Problem Shape | Snapshot versus continuing synchronized values. |
+| 5 | Component Cleanup | Observable Advantage | Owned work stops with component lifetime. |
+| 6 | Sequential Workflow | Promise Advantage | Fixed one-shot sequencing is clearer with `async`/`await`. |
 
-Validation on August 19, 2026:
+Removed completely from navigation, implementation, and tests: High-Frequency Events, Dependent Request Chain, Progressive Dashboard Loading, Timeout & Cache Fallback, Live Application Log Stream, Simple Save Operation, and Parallel One-Time Requests.
 
-- `npm test`: 28 of 28 tests passed across three test files.
-- `npm run build`: production build passed.
-- Browser screenshot QA was attempted, but no controllable browser was available in the session. Do not describe the current iteration as visually browser-verified.
+## Timing audit findings
 
-## Run the project
+There was a real timeline semantics problem. Search logged every database request as “started” before the constrained lane actually began executing it. Queued time and execution time were therefore visually indistinguishable. The shared clock was correct, but timestamps were rounded at capture time, reducing the source data's precision.
 
-```bash
-npm install
-npm start
-npm test
-npm run build
-```
+The corrected system now:
 
-Open `http://localhost:4200`.
+- starts both sides from one shared `performance.now()` epoch;
+- stores raw `performance.now() - epoch` milliseconds in `DemoEvent.timestampMs`;
+- formats timestamps only in the view (`342 ms`, `2.13 s`, `12.4 s`);
+- records request, queue, actual execution, cancellation, teardown, completion, and ignored-result transitions when they happen;
+- records latest user intent and accepted-result timestamps separately;
+- calculates `latestLatency = latestResultAt - latestIntentAt`;
+- uses immutable event-array updates and explicit OnPush refresh signals;
+- clears scheduled inputs, timers, lanes, subscriptions, and controllers on reset.
 
-## Presentation Polish
+No completion timestamp is derived from `start + configuredDelay`. Configured delays only schedule work; recorded events call the shared clock at the actual callback, teardown, or state transition.
 
-### Layout and hierarchy
+## Search scheduler and cancellation
 
-- Every scenario now places a shared **Primary Result** comparison between Run Both and the detailed panels. This surfaces the scenario's decisive latency, work count, delivery shape, freshness, cancellation, or readability outcome without requiring the audience to scan all metrics.
-- Promise remains on the left and Observable on the right in every desktop comparison. Both stack in that order below 850px.
-- **Run Both** is the dominant action, changes to a disabled **Running** state while work is active, and keeps Reset visible without causing layout movement.
-- Scenario headings show the verdict once beside the title; the learning conclusion repeats it only where useful.
-- Presentation Mode now reduces hero whitespace, panel padding, explanations, timeline height, and code prominence while increasing scenario headings, side labels, result values, verdicts, and the main action.
-- Presentation Mode includes Previous/Next controls for the six-demo short path: Baseline → Search → Dependent Chain → Progressive Loading → Live Stream → Simple Save. All other scenarios remain available.
-
-### Scenario visuals
-
-- Search database lanes now use explicit **Running**, **Queued**, **Latest**, and **Cancelled** text and icons. Active progress uses a striped progress fill, while the primary result and accuracy callout explain that cancellation recovered constrained capacity rather than making the JOIN itself faster.
-- Rapid-selection stages use text labels and symbols for running, complete, cancelled, and avoided work, not color alone.
-- High-frequency events now read vertically as raw input → expensive calculations → stale/current output on both sides.
-- Live Dashboard visibly distinguishes an aging Promise snapshot from a live Observable subscription and displays the three most recent source values.
-- Progressive Loading exposes first-content-visible timing and retains the caveat that independent Promise handlers could also render progressively.
-- Live Stream exposes Live, Paused, and Stopped states; Promise-friendly examples show their one-shot flow without portraying Observable as incorrect.
-
-### Timelines, metrics, and code
-
-- Timelines align timestamps/icons/messages, emphasize the newest event, automatically follow new events, preserve scrollback, and use a smaller fixed height in Presentation Mode.
-- Metrics use two visual levels. Active work, cancellation/emissions, latest latency, and rows avoided receive primary emphasis; bookkeeping counters remain secondary.
-- Code remains collapsed by default, scrolls internally, reports `aria-expanded`, connects its control through `aria-controls`, and stays visually secondary during presentations.
-
-### Navigation, decision guide, and responsive behavior
-
-- The grouped sidebar labels **Core Comparisons**, **More Reactive Patterns**, and **When Promise Shines**. The active scenario has both a visible marker and `aria-current="page"`.
-- The final guide now starts with “What shape is your async work?”, shows a result/context/values-over-time decision flow, and ends with Promise, Observable, and Either summaries.
-- At 1100px and below the sidebar becomes grouped multi-row navigation. At 850px the comparison stacks Promise then Observable. At 600px scenario navigation, primary results, metrics, code, and decision cards use a single-column mobile layout without page-level horizontal scrolling.
-
-### Accessibility and motion
-
-- Interactive controls have visible keyboard focus, meaningful button text, explicit disabled states, and textual status indicators in addition to color.
-- Live results and timelines use status/log semantics with polite announcements.
-- `prefers-reduced-motion` disables explanatory transitions and entrance animation while preserving every state change.
-- Presentation Mode changes CSS hierarchy only; it does not recreate or restart a running scenario.
-
-### Visual QA status
-
-Browser automation was attempted again for the requested 1920×1080, 1440×900, 1366×768, 430×932, and 390×844 passes, but the environment reported that no controllable browser was available. Real screenshot QA did **not** occur. Responsive CSS was manually audited and DOM/component regression tests cover navigation, panel order, controls, verdicts, code disclosure, the decision guide, runtime errors, and resource teardown. A final physical browser/projector pass remains required.
-
-## Scenario map
-
-### Core Comparisons
-
-1. **Baseline Request — Both Are Good.** One request and one result. Both finish at equivalent speed; Promise is simpler.
-2. **Search Under Load — Observable Advantage.** Rapid input feeds equivalent constrained in-memory database lanes. Stale Promise queries keep their lane occupied; `switchMap` teardown frees Observable capacity for the newest useful query.
-3. **Rapid Selection Workflow — Observable Advantage.** A changing employee selection starts a five-stage workflow. Version checks protect the Promise UI but old work continues; `switchMap` cancels the whole obsolete Observable chain.
-4. **High-Frequency Events — Observable Advantage.** Sixty raw inputs start sixty Promise calculations. `debounceTime` and `switchMap` reduce the Observable side to a few current calculations.
-5. **Live Dashboard — Different Problem Shape.** `Promise.all` captures a point-in-time snapshot; `combineLatest` maintains a view from continuing sources.
-
-### More Reactive Patterns
-
-6. **Dependent Request Chain — Observable Advantage.** Customer A, B, and C arrive before four dependent stages finish. Promise chains settle and stale results are ignored; the outer `switchMap` replaces the entire obsolete chain.
-7. **Progressive Dashboard Loading — Observable Advantage.** `Promise.all` deliberately renders the complete aggregate at five seconds. Four merged Observable sources render independent sections at 0.8, 1, 2, and 5 seconds. The UI explicitly notes that independent Promise handlers can also progressively render.
-8. **Timeout & Cache Fallback — Both Are Good.** `Promise.race` plus cooperative abort and an RxJS `timeout`/`catchError` pipeline deliver the same cache result. RxJS is more composable; it is not faster.
-9. **Live Application Log Stream — Different Problem Shape.** A Promise fetches one batch and settles. Observable represents a continuing sequence with pause, resume, stop, and teardown.
-10. **Component Lifecycle Cleanup — Observable Advantage.** Navigation occurs during a five-second request. Non-cooperative Promise work settles later and is ignored; Observable unsubscription tears down the operation immediately. The UI notes that Promise cancellation can be added with `AbortController`.
-
-### When Promise Shines
-
-11. **Simple Save Operation — Promise Advantage.** One click, one operation, one result; direct `async`/`await` communicates the intent clearly.
-12. **Sequential Workflow — Promise Advantage.** Create Account → Upload Avatar → Send Welcome Email. Both are correct; linear `async`/`await` is easier to read when the context cannot change.
-13. **Parallel One-Time Requests — Both Are Good.** `Promise.all` and `forkJoin` complete after the same slowest User, Permissions, and Settings request.
-
-## Presentation tools
-
-- **Run Both** resets the active demo and starts both sides from the same epoch.
-- **Fast / Normal / Slow** scales all simulated service work, database ticks, input scripts, and live timers.
-- **Presentation Mode** enlarges the lab while retaining the verdicts and decision guide.
-- Every panel includes metrics, timeline history, result state, and collapsible source code.
-- The final decision guide asks: Is it one result? Are values expected over time? Can the source context change?
-
-## Search database model
-
-The browser app creates deterministic relational data and performs a chunked five-table join:
+Search uses deterministic relational data:
 
 ```text
 Developers → Teams → Projects → Developer_Skills → Skills
 ```
 
-It contains 100,000 developers, 500 teams, 1,500 projects, 300,000 developer-skill relationships, and 12 skills. Promise and Observable receive separate but equivalent single-capacity FIFO lanes. This makes resource contention measurable without one side interfering with the other.
+It creates 100,000 developers, 500 teams, 1,500 projects, 300,000 developer-skill relationships, and 12 skills. Promise and Observable use equivalent, independent, single-capacity FIFO lanes.
 
-The teaching claim is recovered capacity, not faster SQL. In production, unsubscribing can abort a browser request, but database work stops only when cancellation propagates through the server, driver, and database.
+Promise requests enter the queue and finish even after becoming obsolete. Request IDs keep stale results out of the UI but do not free the lane. Observable requests use `switchMap`; inner unsubscription calls the query-source teardown, removes the task from the scheduler, clears/reschedules the active lane timer when necessary, stops further chunks, and prevents later completion.
+
+At Normal speed with deterministic fake timers, the final Search intent occurs around 1.70 seconds. The Observable's useful result takes about 2.02 seconds from that input. The Promise's useful result takes about 7.64 seconds because the final query waits behind obsolete joins. Exact browser values can vary with scheduling and CPU load; the behavior and ordering—not hardcoded displayed values—produce the difference.
+
+## Scenario-specific timing conclusions
+
+- **Baseline Request:** equivalent two-second one-shot work; timings intentionally match within scheduler noise.
+- **Search Under Load:** Observable's newest useful result arrives materially earlier because cancelled work releases lane capacity.
+- **Rapid Selection Workflow:** the latest Promise and Observable workflows intentionally take approximately equal time. Observable's advantage is obsolete stages avoided.
+- **Live Dashboard:** not a speed comparison. Promise settles with a snapshot; Observable keeps emitting a synchronized view.
+- **Component Cleanup:** navigation occurs around 1.8 seconds. Observable teardown stops the timer then; the deliberately non-cooperative Promise settles around five seconds and its result is ignored. The UI reports work after destruction and underlying stop time.
+- **Sequential Workflow:** both three-stage flows use equal deterministic delays and complete at approximately equal time. Promise wins on readability.
 
 ## Architecture
 
 ```text
 src/app/
-  app.component.*                     shell, grouped navigation, core demos, guide
-  demos/extended-demo/                scenarios 6–13 and their tests
-  core/async-demo.service.ts          cancellable async primitives
-  core/comparison-runner.service.ts   shared clock, speed scaling, event logging
-  core/in-memory-database.service.ts  relational data, JOIN work, FIFO lanes
-  core/demo.models.ts                 state, metrics, verdict and speed types
-  shared/comparison-panel/            reusable side-by-side panel
-  shared/event-timeline/              lifecycle history
-  shared/metrics-panel/               comparable counters
-  shared/active-requests/             request lifecycle view
-  shared/code-viewer/                 collapsible code
-  shared/database-lane/               active, queued, cancelled database work
-  shared/verdict-badge/               consistent teaching verdicts
+  app.component.*                     shell, four core demos, navigation, guide
+  demos/extended-demo/                Component Cleanup and Sequential Workflow
+  core/async-demo.service.ts          Promise and Observable delay primitives
+  core/comparison-runner.service.ts   shared epoch, raw event time, speed scaling
+  core/in-memory-database.service.ts  joined data and cancellable FIFO lanes
+  core/demo.models.ts                 state, raw timeline events, metrics
+  shared/comparison-panel/            reusable side-by-side presentation panel
+  shared/event-timeline/              precise event history formatting
+  shared/database-lane/               scheduler-derived active/queued/cancelled UI
+  shared/primary-result/              scenario-specific headline metrics
 ```
 
-The root keeps the original five advanced simulations. The dedicated `ExtendedDemoComponent` owns scenarios 6–13 so the root does not become a monolith. All time-based resources have reset/destroy cleanup; cancellable Promise examples use tracked `AbortController`s and Observable examples use subscription teardown.
+## Validation coverage
 
-## Automated coverage
+The automated suite covers:
 
-The 28 tests validate:
+- the exact six-scenario order and verdicts;
+- one shared Run Both epoch and near-simultaneous starts;
+- equivalent Baseline and Sequential timings;
+- Search queue/execution/cancel/teardown/completion ordering;
+- no completion after an Observable job is cancelled;
+- stale Promise jobs continuing to completion;
+- latest-useful latency measured from final input;
+- material Search latency improvement from released capacity;
+- Rapid Selection teardown, stale work, and avoided stages;
+- snapshot versus continuing Dashboard behavior;
+- Component Cleanup destruction, teardown, later Promise settlement, and work-after-destroy metrics;
+- monotonic timestamps;
+- reset and destruction preventing delayed mutations and timer leaks;
+- speed scaling preserving relative behavior;
+- DOM rendering of precise timeline values, metrics, navigation, verdicts, code disclosure, and the six-row Decision Guide;
+- runtime, console-error, and unhandled-rejection checks across every remaining scenario.
 
-- all 13 scenarios and the 5/5/3 grouping;
-- shared baseline completion and rendered output;
-- realistic search queueing, cancellation, stale protection, work avoided, and latest-result latency;
-- whole-workflow cancellation during rapid selection;
-- event burst shaping;
-- snapshot versus continuing dashboard updates;
-- dependent-chain replacement;
-- progressive section arrival before `Promise.all`;
-- equal cache fallback results;
-- one batch versus a stoppable live stream;
-- component teardown behavior;
-- equivalent simple-save results;
-- sequential ordering;
-- `Promise.all`/`forkJoin` equivalence;
-- reset preventing delayed mutations;
-- presentation speed state.
-- Presentation Mode and its short-path controls;
-- Promise-left / Observable-right DOM order;
-- a primary result and readable verdict for every scenario;
-- accessible code expansion and collapse;
-- decision-guide structure;
-- Fast and Slow debounce, scripted-selection, progressive-loading, fallback, navigation-away, and live-stream timing ratios.
+Run:
 
-The application-level regression suite additionally navigates all 13 scenarios through the rendered sidebar, runs them through their visible **Run Both** controls, checks both timelines and error metrics, traps console/runtime/unhandled-rejection failures, and verifies that component destruction leaves no scheduled timers.
+```bash
+npm test
+npm run build
+```
 
-## Technical accuracy guardrails
+## Presentation flow
 
-- Observable is not inherently faster than Promise.
-- A Promise does not block creation of later Promises.
-- Ignoring a stale result is not cancellation.
-- A Promise can cancel cooperative underlying work with an external mechanism such as `AbortController`; the Promise object itself has no cancellation operation.
-- Unsubscription only saves work when the Observable source implements teardown and the underlying system honors cancellation.
-- `Promise.all` can be replaced with independent Promise handlers when progressive rendering is desired.
-- Prefer Promise for simple one-shot control flow; prefer Observable when values, ownership, context, or composition change over time.
+Baseline Request → Search Under Load → Rapid Selection Workflow → Live Dashboard → Component Cleanup → Sequential Workflow → Decision Guide.
 
-## Recommended live presentation
+The closing principle is: Observable is not inherently faster. It becomes powerful when time, changing context, repeated values, or lifecycle are part of the problem. Use Promise when a simple one-shot async flow is all that is needed.
 
-For a concise talk: Baseline → Search Under Load → Dependent Request Chain → Progressive Loading → Live Stream Control → Simple Save → Decision Guide.
+## Final visual and presentation polish
 
-For a deep dive: present all scenarios in numerical order. Use **Normal** speed while explaining internals, **Fast** for a complete tour, and **Slow** when narrating cancellation events.
+- Navigation is now one compact six-item list followed by Decision Guide. Scenario verdict chips were removed from navigation so the active label remains the dominant cue; the full text verdict remains beside each scenario title.
+- Run Both is the fixed-width primary action. Run Promise, Run Observable, and Reset now form one centralized secondary control row instead of being buried separately inside each comparison panel.
+- Primary Result now uses larger tabular values, explicit Promise/Observable identity markers, an optional high-emphasis comparison statement, and a concise explanatory note.
+- Baseline shows equal duration and loaded-result status without a wall of bookkeeping metrics.
+- Search surfaces Latest User Intent, marks the newest queued or executing scheduler job, retains recent cancelled work, and promotes actual latest-useful latency, work avoided, and measured percentage. The explanatory capacity note remains visible without opening code.
+- Rapid Selection labels the newest employee workflow, promotes obsolete stages executed versus avoided, and explicitly avoids presenting equal latest-workflow time as a speed victory.
+- Live Dashboard presents Snapshot versus Live as delivery shapes and keeps updates local to the changing values.
+- Component Cleanup includes parallel ownership strips: destroy → continuing Promise work → ignored result versus destroy → unsubscribe → teardown.
+- Sequential Workflow retains equal deterministic timings and uses a prominent Promise-readability conclusion while describing both approaches as correct.
+- Timeline rows use aligned tabular timestamps, distinct state icons, screen-reader status text, compact spacing, and the existing live auto-scroll behavior.
+- Metrics are scenario-specific: two headline metrics receive emphasis while secondary counters remain compact. Unused retries and unrelated counters are no longer shown everywhere.
+- Presentation Mode enlarges scenario/verdict/result hierarchy, centralizes a sticky non-overlapping control bar on desktop, reduces secondary spacing, keeps code collapsed by default, and advances from demo 6 to the Decision Guide.
+- Narrow layouts stack Promise before Observable, turn control rows into touch-friendly grids, stack lifecycle tracks and decision content, and keep lanes/code internally contained.
+- Focus indicators, disabled text states, `aria-current`, `aria-expanded`, live regions, textual status labels, and reduced-motion handling remain in place.
 
-## Remaining manual check
+Validation after this polish pass: `npm test` passes 25 of 25 tests across three files. The production build passes with no TypeScript errors. UI regression tests now also cover the centralized control hierarchy, concise navigation, active state, Presentation Mode progression, latest-intent lane rendering, lifecycle ownership strip, comparison headline, code disclosure, and Decision Guide.
 
-Run a desktop and narrow-mobile browser pass when a controllable browser is available. Check grouped navigation wrapping, sticky header controls, both comparison columns, long timelines, code expansion, the final table, and that every button remains keyboard accessible.
+## Manual QA
+
+Browser automation was attempted for this polish pass, but no browser backend was connected. Real screenshot QA was therefore not performed. Manually verify 1920×1080, 1440×900, 1366×768, 768px, 430px, and 390px layouts; watch Search mid-run and completed, Rapid Selection mid-run, Dashboard emissions, Cleanup after navigation, Sequential completion, timeline auto-scroll, Presentation Mode controls, and the Decision Guide.

@@ -17,10 +17,12 @@ import { DemoState, Side } from '../../core/demo.models';
       </header>
       <p class="description">{{ description() }}</p>
 
-      <div class="panel-actions">
-        <button type="button" class="run-side" [disabled]="state().loading" (click)="run.emit()">{{ actionLabel() }}</button>
-        @if (showCancel()) { <button type="button" class="cancel" [disabled]="!state().loading" (click)="cancel.emit()">{{ cancelLabel() }}</button> }
-      </div>
+      @if (showActions()) {
+        <div class="panel-actions">
+          <button type="button" class="run-side" [disabled]="state().loading" (click)="run.emit()">{{ actionLabel() }}</button>
+          @if (showCancel()) { <button type="button" class="cancel" [disabled]="!state().loading" (click)="cancel.emit()">{{ cancelLabel() }}</button> }
+        </div>
+      }
 
       <section class="result-box" [class.loading]="state().loading" [class.has-result]="state().result" role="status" aria-live="polite">
         <div class="status-row">
@@ -35,7 +37,7 @@ import { DemoState, Side } from '../../core/demo.models';
         @if (!state().result && !state().loading) { <div class="placeholder">Waiting for an asynchronous result…</div> }
       </section>
 
-      <app-metrics-panel [metrics]="state().metrics" [search]="searchMode()" />
+      <app-metrics-panel [metrics]="state().metrics" [mode]="metricMode()" />
       <app-active-requests [requests]="state().requests" />
       <app-event-timeline [events]="state().events" />
       <app-code-viewer [open]="state().codeOpen" [code]="code()" (toggle)="toggleCode.emit()" />
@@ -54,7 +56,8 @@ export class ComparisonPanelComponent {
   readonly badge = input('ONE SHOT');
   readonly actionLabel = input('RUN');
   readonly loadingText = input('WORK IN PROGRESS');
-  readonly searchMode = input(false);
+  readonly metricMode = input('basic');
+  readonly showActions = input(true);
   readonly showCancel = input(false);
   readonly showProgress = input(false);
   readonly cancelLabel = input('CANCEL');

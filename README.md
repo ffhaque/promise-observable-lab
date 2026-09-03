@@ -1,6 +1,6 @@
 # Promise vs Observable Lab
 
-An interactive Angular 22 lab that makes asynchronous behavior visible. Thirteen side-by-side demos compare lifecycle, cancellation, progressive delivery, streams, composition, and simple one-shot work without claiming that one abstraction is universally faster.
+An Angular 22 technical presentation that makes asynchronous behavior visible through six focused, side-by-side demonstrations. It does not assume that Observable is inherently faster than Promise.
 
 ## Start and validate
 
@@ -15,60 +15,53 @@ Open `http://localhost:4200`.
 
 ## Learning path
 
-### Core Comparisons
+| # | Demonstration | Verdict |
+|---|---|---|
+| 1 | Baseline Request | Both Are Good |
+| 2 | Search Under Load | Observable Advantage |
+| 3 | Rapid Selection Workflow | Observable Advantage |
+| 4 | Live Dashboard | Different Problem Shape |
+| 5 | Component Cleanup | Observable Advantage |
+| 6 | Sequential Workflow | Promise Advantage |
 
-1. Baseline Request — both are good
-2. Search Under Load — Observable capacity advantage
-3. Rapid Selection Workflow — Observable workflow advantage
-4. High-Frequency Events — Observable event-shaping advantage
-5. Live Dashboard — snapshot versus continuing view
+The final Decision Guide asks whether the work has one result, changing context, continuing values, or a lifecycle owner.
 
-### More Reactive Patterns
+## Timing model
 
-6. Dependent Request Chain — replace a complete chain with outer `switchMap`
-7. Progressive Loading — independent sections arrive before an aggregate completes
-8. Timeout & Cache Fallback — two correct strategies, one composable RxJS pipeline
-9. Live Stream Control — repeated values plus pause, resume, stop, and teardown
-10. Component Cleanup — lifecycle-owned unsubscription
+**Run Both** resets active work and creates one shared `performance.now()` epoch. Every timeline entry stores raw elapsed milliseconds at the instant its state transition occurs; formatting happens only in the timeline UI:
 
-### When Promise Shines
+- under one second: `342 ms`
+- one to ten seconds: `2.13 s`
+- over ten seconds: `12.4 s`
 
-11. Simple Save — direct one-shot `async`/`await`
-12. Sequential Workflow — readable top-to-bottom control flow
-13. Parallel One-Time Requests — `Promise.all` and `forkJoin` are both good
+Timeline time is elapsed time from Run Both. **Latest Useful Result** is a different metric: it is measured from the final relevant user input until that input's accepted result arrives.
 
-Use **Run Both** to start each comparison on a shared clock. Use **Fast / Normal / Slow** for presentation pacing. Every scenario includes visible state, metrics, lifecycle history, code, an honest verdict, and a teaching message.
+Baseline and Sequential Workflow intentionally produce approximately equal timings. Search gains come from `switchMap` teardown removing obsolete jobs from an equivalent constrained database lane, allowing the final query to execute earlier. The final query itself does not run faster.
 
-## The database search
+## Search database
 
-Search uses a deterministic in-memory relational dataset with 100,000 developers and a chunked five-table join. Equivalent FIFO query lanes expose the effect of obsolete work under constrained capacity. `switchMap` is faster for the newest useful result because teardown frees capacity—not because Observable executes SQL faster.
+Search creates deterministic relational data and performs a chunked five-table join:
 
-## Core principle
+```text
+Developers → Teams → Projects → Developer_Skills → Skills
+```
 
-Promise is excellent for one result. Observable becomes powerful when time and change are part of the problem.
+The model contains 100,000 developers, 500 teams, 1,500 projects, 300,000 developer-skill relationships, and 12 skills. Promise and Observable use separate, equivalent single-capacity FIFO lanes. Lane UI is derived directly from scheduler state.
 
-See [PROJECT_HANDOFF.md](./PROJECT_HANDOFF.md) for scenario mechanics, architecture, accuracy notes, test coverage, and the recommended presentation flow.
+## GitHub Pages deployment
 
-## GitHub Pages Deployment
+The repository includes an automated GitHub Pages workflow that tests and builds the app before deployment.
 
-The repository includes an automated GitHub Pages workflow. It runs the complete test suite before building and deploying the Angular browser application.
+1. In the GitHub repository, open **Settings → Pages**.
+2. Under **Build and deployment → Source**, choose **GitHub Actions**.
+3. Push or merge into `main`, or manually run **Deploy Angular to GitHub Pages** from Actions.
 
-1. Push this project to a GitHub repository whose default deployment branch is `main`.
-2. Open the repository on GitHub and select **Settings**.
-3. Open **Pages**.
-4. Under **Build and deployment → Source**, choose **GitHub Actions**.
-5. Push or merge a commit into `main`.
-6. Open the **Actions** tab and wait for **Deploy to GitHub Pages** to finish successfully.
-7. Open the deployment URL shown by the workflow or on the repository's Pages settings screen.
+Pages must be enabled once before `actions/configure-pages` can retrieve the site. A missing Pages site produces a `Get Pages site failed` / `Not Found` error.
 
-The URL format is:
+The deployed URL is normally:
 
 ```text
 https://<username>.github.io/<repository>/
 ```
 
-The workflow derives `<repository>` from GitHub metadata and passes `/<repository>/` to Angular as the deployment-only base href. Local development remains available at `http://localhost:4200/` with the normal `/` base href.
-
-Every future push to `main` automatically installs from `package-lock.json`, runs the tests, creates a production build, and redeploys the site. You can also run it manually from **Actions → Deploy to GitHub Pages → Run workflow**.
-
-The application does not use Angular Router routes, so GitHub Pages does not require hash routing or a `404.html` SPA fallback.
+See [PROJECT_HANDOFF.md](./PROJECT_HANDOFF.md) for implementation details, timing-audit findings, coverage, and presentation notes.

@@ -1,10 +1,10 @@
-.panel { --accent: var(--promise); background: linear-gradient(180deg, rgba(40,50,72,.35), transparent 130px), var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 12px; padding: 1rem; min-width: 0; box-shadow: 0 16px 40px rgba(0,0,0,.16); }
+.panel { --accent: var(--promise); background:var(--surface); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 12px; padding: 1rem; min-width: 0; box-shadow: 0 12px 28px rgba(0,0,0,.12); }
 .panel.observable { --accent: var(--observable); }
 header { display:flex; align-items:flex-end; justify-content:space-between; border-bottom:1px solid var(--line); padding-bottom:.8rem; }
 .eyebrow { color:var(--muted); font:700 .58rem var(--mono); letter-spacing:.12em; }
 h2 { margin:.18rem 0 0; font:850 1.35rem/1 var(--sans); letter-spacing:.045em; color:var(--text); }
 .kind { border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); background:color-mix(in srgb, var(--accent) 10%, transparent); color:var(--accent); border-radius:99px; padding:.28rem .48rem; font:700 .58rem var(--mono); }
-.description { color:var(--text-soft); font-size:.74rem; line-height:1.45; min-height:2.15rem; }
+.description { color:var(--text-soft); font-size:.78rem; line-height:1.5; min-height:2.15rem; }
 .panel-actions { display:flex; gap:.5rem; margin:.9rem 0; }
 button { font:700 .68rem var(--mono); letter-spacing:.05em; border-radius:7px; padding:.62rem .78rem; cursor:pointer; transition:.15s; }
 button:disabled { opacity:.42; cursor:not-allowed; }

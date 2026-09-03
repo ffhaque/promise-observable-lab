@@ -11,7 +11,7 @@
           <button type="button" [class.active]="presentationSpeed === speed" [attr.aria-pressed]="presentationSpeed === speed" (click)="setPresentationSpeed($any(speed))">{{ speed }}</button>
         }
       </div>
-      <label class="mode-toggle"><input type="checkbox" [(ngModel)]="presentationMode"><span></span> PRESENTATION MODE</label>
+      <label class="mode-toggle"><input type="checkbox" [ngModel]="presentationMode" (ngModelChange)="setPresentationMode($event)"><span></span> PRESENTATION MODE</label>
     </div>
   </header>
 
@@ -31,21 +31,20 @@
 
     <div class="lab-layout">
       <aside class="scenario-sidebar">
-        <div class="sidebar-heading"><span>LEARNING PATH</span><b>13 INTERACTIVE DEMOS</b></div>
-        <nav class="scenario-nav grouped" aria-label="Demo scenarios">
-          @for (group of scenarioGroups; track group.id) {
-            <section class="nav-group">
-              <h2>{{ group.title }}</h2>
-              <div>
-                @for (item of group.items; track item.id) {
-                  <button type="button" [class.active]="activeId === item.id" [attr.aria-current]="activeId === item.id ? 'page' : null" (click)="selectScenario(item.id)">
-                    <span>{{ item.number }}</span>
-                    <span class="nav-copy"><b>{{ item.name }}</b><app-verdict-badge [verdict]="item.verdict" [compact]="true" /></span>
-                  </button>
-                }
-              </div>
-            </section>
-          }
+        <div class="sidebar-heading"><span>LEARNING PATH</span><b>6 FOCUSED DEMOS</b></div>
+        <nav class="scenario-nav" aria-label="Demo scenarios">
+          <section class="nav-group">
+            <h2>CORE DEMOS</h2>
+            <div>
+              @for (item of scenarios; track item.id) {
+                <button type="button" [class.active]="activeId === item.id" [attr.aria-current]="activeId === item.id ? 'page' : null" (click)="selectScenario(item.id)">
+                  <span>{{ item.number }}</span>
+                  <span class="nav-copy"><b>{{ item.name }}</b></span>
+                </button>
+              }
+            </div>
+          </section>
+          <a class="decision-link" href="#decision-guide"><span>07</span><b>Decision Guide</b></a>
         </nav>
       </aside>
 
@@ -53,17 +52,17 @@
       @if (presentationMode) {
         <div class="presentation-path" aria-label="Recommended presentation path">
           <button type="button" (click)="previousPresentationDemo()" [disabled]="presentationPathIndex <= 0">← PREVIOUS DEMO</button>
-          <span>SHORT PRESENTATION PATH · {{ presentationPathIndex >= 0 ? presentationPathIndex + 1 : '—' }} / 6</span>
-          <button type="button" (click)="nextPresentationDemo()" [disabled]="presentationPathIndex < 0 || presentationPathIndex >= 5">NEXT DEMO →</button>
+          <span>DEMO {{ presentationPathIndex >= 0 ? presentationPathIndex + 1 : '—' }} OF 6 · {{ scenario.name.toUpperCase() }}</span>
+          <button type="button" (click)="nextPresentationDemo()" [disabled]="presentationPathIndex < 0">{{ presentationPathIndex === 5 ? 'DECISION GUIDE' : 'NEXT' }} →</button>
         </div>
       }
 
     @if (isCoreScenario) {
     <section class="workspace">
       <div class="scenario-heading">
-        <div><span class="scenario-count">SCENARIO {{ scenario.number }} / 13</span><h2>{{ scenario.name }}</h2></div>
+        <div><span class="scenario-count">SCENARIO {{ scenario.number }} / 06</span><h2>{{ scenario.name }}</h2></div>
         <app-verdict-badge [verdict]="scenario.verdict" />
-        <p>{{ activeId === 'search' ? 'One lane. Obsolete work decides when the useful result arrives.' : activeId === 'selection' ? 'Five stages. Context changes before work finishes.' : activeId === 'events' ? 'Many raw events. Far fewer useful calculations.' : activeId === 'dashboard' ? 'One snapshot versus a continuously synchronized view.' : 'One request. One result. Two equally valid tools.' }}</p>
+        <p>{{ activeId === 'search' ? 'One lane. Obsolete work decides when the useful result arrives.' : activeId === 'selection' ? 'Five stages. Context changes before work finishes.' : activeId === 'dashboard' ? 'One snapshot versus a continuously synchronized view.' : 'One request. One result. Two equally valid tools.' }}</p>
       </div>
       <div class="comparison-focus"><b>WHAT TO WATCH</b><span>{{ comparisonFocus }}</span></div>
 
@@ -71,6 +70,7 @@
         <div class="shared-input">
           <label for="search">LARGE DATABASE SEARCH <span>each query may scan millions of rows and return a large dataset</span></label>
           <div class="input-row"><span>⌕</span><input id="search" type="text" [formControl]="searchControl" (input)="updateSearch(searchControl.value)" placeholder="Type at least 2 characters…"><button type="button" (click)="autoType()">AUTO TYPE DEMO</button></div>
+          <div class="latest-intent"><span>LATEST USER INTENT</span><strong>“{{ searchControl.value || '—' }}”</strong></div>
           <div class="db-schema" aria-label="In-memory database schema">
             <span><b>DEVELOPERS</b>{{ databaseStats.developers.toLocaleString() }}</span><i>JOIN</i>
             <span><b>TEAMS</b>{{ databaseStats.teams.toLocaleString() }}</span><i>JOIN</i>
@@ -91,25 +91,18 @@
         </div>
       }
 
-      @if (activeId === 'events') {
-        <div class="scenario-input event-input">
-          <div><b>QUOTE COMPLEXITY</b><span>Drag rapidly or generate a deterministic burst</span></div>
-          <input type="range" min="10" max="100" value="50" (input)="manualEvent($event)">
-          <button type="button" class="auto" (click)="autoGenerateEvents()">AUTO GENERATE</button>
-          <strong>RAW EVENTS <em>{{ rawEventCount }}</em></strong>
-        </div>
-      }
-
       <div class="master-controls">
-        <button type="button" class="run-both" [disabled]="isRunning" (click)="runBoth()"><span>{{ isRunning ? '●' : '▶' }}</span> {{ isRunning ? 'RUNNING' : 'RUN BOTH' }} <small>SHARED CLOCK</small></button>
-        <button type="button" class="reset" (click)="reset()">↺ RESET</button>
-        @if (activeId === 'dashboard' && observableState.loading) {
-          <button type="button" class="cancel-both" (click)="cancel('observable')">■ STOP LIVE DASHBOARD</button>
-        }
+        <button type="button" class="run-both" [disabled]="isRunning" (click)="runBoth()"><span>{{ isRunning ? '●' : '▶' }}</span> {{ isRunning ? 'RUNNING…' : 'RUN BOTH' }} <small>SHARED CLOCK</small></button>
+        <div class="side-controls">
+          <button type="button" class="run-promise" [disabled]="promiseState.loading" (click)="runPromise()">RUN PROMISE</button>
+          <button type="button" class="run-observable" [disabled]="observableState.loading" (click)="runObservable()">RUN OBSERVABLE</button>
+          @if (activeId === 'dashboard' && observableState.loading) { <button type="button" class="cancel-both" (click)="cancel('observable')">■ STOP LIVE</button> }
+          <button type="button" class="reset" (click)="reset()">↺ RESET</button>
+        </div>
       </div>
-      @if (sharedRun) { <div class="shared-clock"><i></i> SYNCHRONIZED COMPARISON CLOCK ACTIVE · T+{{ promiseState.events.at(-1)?.timestamp ?? 0 }}MS</div> }
+      @if (sharedRun) { <div class="shared-clock"><i></i> SYNCHRONIZED COMPARISON CLOCK ACTIVE · ONE SHARED EPOCH</div> }
 
-      <app-primary-result [label]="primaryResult.label" [promiseValue]="primaryResult.promise" [observableValue]="primaryResult.observable" [promiseDetail]="primaryResult.promiseDetail" [observableDetail]="primaryResult.observableDetail" [note]="primaryResult.note" />
+      <app-primary-result [label]="primaryResult.label" [promiseValue]="primaryResult.promise" [observableValue]="primaryResult.observable" [promiseDetail]="primaryResult.promiseDetail" [observableDetail]="primaryResult.observableDetail" [comparison]="primaryResult.comparison" [note]="primaryResult.note" />
       @if (isSearch && (promiseState.metrics.started || observableState.metrics.started)) {
         <div class="accuracy-callout"><b>WHY?</b><span>The Observable did not execute the same JOIN faster. <strong>switchMap</strong> cancelled obsolete work, releasing constrained capacity for the newest useful query.</span></div>
       }
@@ -118,37 +111,35 @@
         <div class="side-stack">
           @if (isSearch) { <app-database-lane side="promise" [snapshot]="promiseLane" /> }
           @if (activeId === 'selection') {
-            <section class="workflow-board promise-board"><header>OBSOLETE WORK STILL RUNNING <b>{{ workflowWasted('promise') }} WASTED STAGES</b></header>
-              @for (flow of promiseWorkflows; track flow.id) { <div class="workflow" [class]="'workflow ' + flow.status"><strong>{{ flow.person }}</strong><div>@for (stage of flow.stages; track stage.name) { <span [class]="stage.status">{{ stage.name }} <i>{{ stage.status }}</i></span> }</div></div> }
+            <section class="workflow-board promise-board"><header>OLD CONTEXT · WORK STILL RUNNING <b>{{ obsoleteStagesExecuted('promise') }} OBSOLETE STAGES EXECUTED</b></header>
+              @for (flow of promiseWorkflows; track flow.id) { <div class="workflow" [class]="'workflow ' + flow.status" [class.latest]="isLatestWorkflow('promise', flow.id)"><strong>{{ flow.person }} @if (isLatestWorkflow('promise', flow.id)) { <small>LATEST SELECTION</small> }</strong><div>@for (stage of flow.stages; track stage.name) { <span [class]="stage.status">{{ stage.name }} <i>{{ stage.status }}</i></span> }</div></div> }
             </section>
           }
-          @if (activeId === 'events') { <section class="event-pipeline promise-pipe"><span><small>RAW INPUT</small><b>{{ rawEventCount }} EVENTS</b></span><i>↓</i><span><small>EVERY EVENT STARTS WORK</small><b>{{ promiseState.metrics.started }} CALCULATIONS</b></span><i>↓</i><span><small>OBSOLETE</small><b>{{ promiseState.metrics.stale }} STALE · {{ promiseState.metrics.emitted }} USEFUL</b></span></section> }
           @if (activeId === 'dashboard') {
             <section class="dashboard-card snapshot"><header>SNAPSHOT <b>CAPTURED {{ snapshotAge }}s AGO</b></header><div><span>CPU<strong>{{ promiseDashboard?.cpu ?? '—' }}%</strong></span><span>USERS<strong>{{ promiseDashboard?.users ?? '—' }}</strong></span><span>ERROR RATE<strong>{{ promiseDashboard?.errors ?? '—' }}%</strong></span></div><footer>{{ promiseDashboard ? 'PROMISE.ALL SETTLED · VALUES NO LONGER CHANGE' : 'WAITING FOR PROMISE.ALL' }}</footer></section>
           }
           <app-comparison-panel
             side="promise" [state]="promiseState" [refreshToken]="renderToken(promiseState)" [description]="promiseDescription" [code]="promiseCode"
-            [badge]="activeId === 'search' ? 'QUEUED WORK' : activeId === 'selection' ? 'VERSION ID' : activeId === 'events' ? 'EVERY EVENT' : activeId === 'dashboard' ? 'SNAPSHOT' : 'ONE SHOT'"
-            [actionLabel]="activeId === 'selection' ? 'SELECT JESSICA' : activeId === 'events' ? 'CALCULATE ONCE' : activeId === 'dashboard' ? 'REFRESH SNAPSHOT' : 'RUN PROMISE'"
-            loadingText="PROMISE WORK ACTIVE" [searchMode]="isSearch" [showCancel]="false" [showProgress]="false"
+            [badge]="activeId === 'search' ? 'QUEUED WORK' : activeId === 'selection' ? 'VERSION ID' : activeId === 'dashboard' ? 'SNAPSHOT' : 'ONE SHOT'"
+            [actionLabel]="activeId === 'selection' ? 'SELECT JESSICA' : activeId === 'dashboard' ? 'REFRESH SNAPSHOT' : 'RUN PROMISE'"
+            loadingText="PROMISE WORK ACTIVE" [metricMode]="activeId" [showActions]="false" [showCancel]="false" [showProgress]="false"
             (run)="runPromise()" (cancel)="cancel('promise')" (toggleCode)="toggleCode('promise')" />
         </div>
         <div class="side-stack">
           @if (isSearch) { <app-database-lane side="observable" [snapshot]="observableLane" /> }
           @if (activeId === 'selection') {
             <section class="workflow-board observable-board"><header>SWITCHMAP WORKFLOW LIFECYCLE <b>{{ workflowStagesAvoided('observable') }} STAGES AVOIDED</b></header>
-              @for (flow of observableWorkflows; track flow.id) { <div class="workflow" [class]="'workflow ' + flow.status"><strong>{{ flow.person }}</strong><div>@for (stage of flow.stages; track stage.name) { <span [class]="stage.status">{{ stage.name }} <i>{{ stage.status }}</i></span> }</div></div> }
+              @for (flow of observableWorkflows; track flow.id) { <div class="workflow" [class]="'workflow ' + flow.status" [class.latest]="isLatestWorkflow('observable', flow.id)"><strong>{{ flow.person }} @if (isLatestWorkflow('observable', flow.id)) { <small>LATEST SELECTION</small> }</strong><div>@for (stage of flow.stages; track stage.name) { <span [class]="stage.status">{{ stage.name }} <i>{{ stage.status }}</i></span> }</div></div> }
             </section>
           }
-          @if (activeId === 'events') { <section class="event-pipeline observable-pipe"><span><small>RAW INPUT</small><b>{{ rawEventCount }} EVENTS</b></span><i>↓ debounceTime</i><span><small>EXPENSIVE WORK ALLOWED</small><b>{{ observableState.metrics.started }} CALCULATIONS</b></span><i>↓ switchMap</i><span><small>CURRENT</small><b>{{ observableState.metrics.emitted }} USEFUL</b></span></section> }
           @if (activeId === 'dashboard') {
             <section class="dashboard-card live"><header>LIVE <i></i><b>{{ observableState.loading ? '● SUBSCRIBED' : '■ STOPPED' }}</b></header><div><span>CPU $<strong>{{ observableDashboard?.cpu ?? '—' }}%</strong><small>{{ dashboardSeries('cpu') }}</small></span><span>USERS $<strong>{{ observableDashboard?.users ?? '—' }}</strong><small>{{ dashboardSeries('users') }}</small></span><span>ERRORS $<strong>{{ observableDashboard?.errors ?? '—' }}%</strong><small>{{ dashboardSeries('errors') }}</small></span></div><footer>CPU$ ─┐ &nbsp; USERS$ ─┼→ combineLatest → VIEW MODEL &nbsp; ERRORS$ ─┘</footer></section>
           }
           <app-comparison-panel
             side="observable" [state]="observableState" [refreshToken]="renderToken(observableState)" [description]="observableDescription" [code]="observableCode"
-            [badge]="activeId === 'search' || activeId === 'selection' || activeId === 'events' ? 'SWITCHMAP' : activeId === 'dashboard' ? 'COMBINELATEST' : 'COLD STREAM'"
-            [actionLabel]="activeId === 'selection' ? 'SELECT JESSICA' : activeId === 'events' ? 'CALCULATE ONCE' : activeId === 'dashboard' ? 'START LIVE VIEW' : 'RUN OBSERVABLE'"
-            loadingText="OBSERVABLE STREAM ACTIVE" [searchMode]="isSearch" [showCancel]="showCancel" [showProgress]="false" cancelLabel="STOP LIVE"
+            [badge]="activeId === 'search' || activeId === 'selection' ? 'SWITCHMAP' : activeId === 'dashboard' ? 'COMBINELATEST' : 'COLD STREAM'"
+            [actionLabel]="activeId === 'selection' ? 'SELECT JESSICA' : activeId === 'dashboard' ? 'START LIVE VIEW' : 'RUN OBSERVABLE'"
+            loadingText="OBSERVABLE STREAM ACTIVE" [metricMode]="activeId" [showActions]="false" [showCancel]="showCancel" [showProgress]="false" cancelLabel="STOP LIVE"
             (run)="runObservable()" (cancel)="cancel('observable')" (toggleCode)="toggleCode('observable')" />
         </div>
       </div>
@@ -164,37 +155,35 @@
       </div>
     </div>
 
-    <section class="final-comparison">
-      <span class="kicker">DECISION GUIDE</span><h2>What shape is your async work?</h2>
+    <section id="decision-guide" class="final-comparison">
+      <span class="kicker">DECISION GUIDE</span><h2>WHAT SHAPE IS YOUR ASYNC WORK?</h2>
       <div class="decision-tree" aria-label="Asynchronous work decision flow">
         <div class="tree-start"><b>START</b><span>ONE EVENTUAL RESULT?</span></div>
         <div class="tree-branch yes"><small>YES</small><b>CAN CONTEXT CHANGE?</b><span>Yes → Observable + switchMap<br>No → Is it a simple linear flow?</span></div>
         <div class="tree-branch no"><small>NO</small><b>VALUES OVER TIME?</b><span>Yes → Observable<br>No → choose the clearest composition</span></div>
         <div class="tree-answer promise"><b>PROMISE</b><span>Simple, linear, one-shot work</span></div>
         <div class="tree-answer observable"><b>OBSERVABLE</b><span>Changing context, repeated values, owned lifecycle</span></div>
+        <div class="tree-lifecycle"><b>WORK MUST STOP WITH COMPONENT?</b><span>YES → Observable lifecycle / teardown</span></div>
       </div>
       <div class="decision-columns">
         <article><h3>PROMISE</h3><ul><li>One eventual result</li><li>Sequential one-shot work</li><li>Simple commands</li><li>Promise.all for fixed parallel work</li></ul></article>
         <article><h3>OBSERVABLE</h3><ul><li>Values over time</li><li>Latest-only behavior</li><li>Changing context and event shaping</li><li>Reactive composition and lifecycle ownership</li></ul></article>
-        <article><h3>EITHER</h3><ul><li>Both model the task well</li><li>Choose readability</li><li>Follow the surrounding API</li><li>Do not treat timer noise as a winner</li></ul></article>
+        <article><h3>BOTH</h3><ul><li>Simple one-shot work</li><li>Both model the task well</li><li>Choose whichever communicates intent best</li><li>Do not treat timer noise as a winner</li></ul></article>
       </div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>CAPABILITY</th><th><i class="promise-dot"></i>PROMISE</th><th><i class="observable-dot"></i>OBSERVABLE</th></tr></thead>
           <tbody>
-            <tr><td>1. One async result</td><td class="yes">Excellent and simple</td><td>Also excellent</td></tr>
-            <tr><td>2. Latest result matters</td><td>Manual identity + cancellation</td><td class="yes">switchMap disposes obsolete work</td></tr>
-            <tr><td>3. Context changes mid-workflow</td><td>Old workflows need manual coordination</td><td class="yes">switchMap disposes the whole workflow</td></tr>
-            <tr><td>4. High-frequency events</td><td>Manual event shaping</td><td class="yes">Operators shape before expensive work</td></tr>
-            <tr><td>5. Multiple changing sources</td><td class="yes">Excellent one-time snapshot</td><td class="yes">combineLatest maintains a live view</td></tr>
-            <tr><td>6–10. Reactive workflows</td><td>Possible with explicit coordination</td><td class="yes">Declarative cancellation, fallback, streams, cleanup</td></tr>
-            <tr><td>11. Simple save</td><td class="yes">Best fit: direct async/await</td><td>Valid, but extra machinery</td></tr>
-            <tr><td>12. Sequential one-time workflow</td><td class="yes">Natural top-to-bottom control flow</td><td>Useful when the workflow must become a stream</td></tr>
-            <tr><td>13. Parallel one-time requests</td><td class="yes">Promise.all</td><td class="yes">forkJoin</td></tr>
+            <tr><td>1. Baseline request</td><td class="yes">Both Are Good</td><td class="yes">Both Are Good</td></tr>
+            <tr><td>2. Search under load</td><td>Obsolete work keeps its lane</td><td class="yes">Observable Advantage</td></tr>
+            <tr><td>3. Rapid selection workflow</td><td>Version guard; old work continues</td><td class="yes">Observable Advantage</td></tr>
+            <tr><td>4. Live dashboard</td><td class="yes">Point-in-time snapshot</td><td class="yes">Continuing synchronized view</td></tr>
+            <tr><td>5. Component cleanup</td><td>External cancellation required</td><td class="yes">Observable Advantage</td></tr>
+            <tr><td>6. Sequential workflow</td><td class="yes">Promise Advantage</td><td>Correct, but more machinery</td></tr>
           </tbody>
         </table>
       </div>
-      <div class="takeaway final-message"><div><i class="promise-dot"></i><p><b>Observable is not inherently faster than Promise.</b></p></div><div><i class="observable-dot"></i><p><b>Observable becomes powerful</b> when time, cancellation, repeated values, changing context, or composition are part of the problem.</p></div></div>
+      <div class="takeaway final-message"><div><i class="promise-dot"></i><p><b>Observable is not inherently faster.</b> Use Promise when a simple one-shot async flow is all you need.</p></div><div><i class="observable-dot"></i><p><b>Observable becomes powerful</b> when time, changing context, repeated values, or lifecycle are part of the problem.</p></div></div>
       <div class="closing-principle"><small>DON'T ASK: “WHICH ONE IS BETTER?”</small><strong>Ask: “What is the shape of my asynchronous problem?”</strong></div>
     </section>
   </main>

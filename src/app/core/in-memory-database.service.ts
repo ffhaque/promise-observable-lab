@@ -27,9 +27,15 @@ export interface CancelledQueryWork {
 }
 
 export interface DatabaseLaneSnapshot {
-  active?: { id: number; term: string; progress: number };
+  active?: { id: number; term: string; progress: number; latest: boolean };
   queued: { id: number; term: string }[];
   cancelled: string[];
+}
+
+export interface DatabaseQueryLifecycle {
+  queued?: () => void;
+  executing?: () => void;
+  cancelled?: (work: CancelledQueryWork) => void;
 }
 
 interface Developer { id: number; name: string; teamId: number; }
@@ -44,12 +50,13 @@ interface QueryTask {
   matches: number;
   startedAt: number;
   settled: boolean;
+  executing: boolean;
   resolve: (result: DatabaseQueryResult) => void;
   reject?: (error: DOMException) => void;
-  onCancel?: (work: CancelledQueryWork) => void;
+  lifecycle?: DatabaseQueryLifecycle;
 }
 
-interface LaneState { tasks: QueryTask[]; cancelled: string[]; timer?: number; }
+interface LaneState { tasks: QueryTask[]; cancelled: string[]; latestTaskId?: number; timer?: number; }
 
 @Injectable({ providedIn: 'root' })
 export class InMemoryDatabaseService {
@@ -73,15 +80,15 @@ export class InMemoryDatabaseService {
     return { developers: this.developers.length, teams: this.teams.length, projects, developerSkills, totalRows: this.developers.length + this.teams.length + projects + developerSkills + this.skills.length };
   }
 
-  queryPromise(term: string): Promise<DatabaseQueryResult> {
+  queryPromise(term: string, lifecycle: DatabaseQueryLifecycle = {}): Promise<DatabaseQueryResult> {
     this.initialize();
-    return new Promise<DatabaseQueryResult>((resolve, reject) => this.enqueue('promise', term, resolve, reject));
+    return new Promise<DatabaseQueryResult>((resolve, reject) => this.enqueue('promise', term, resolve, reject, lifecycle));
   }
 
-  queryObservable(term: string, onCancel: (work: CancelledQueryWork) => void): Observable<DatabaseQueryResult> {
+  queryObservable(term: string, lifecycle: DatabaseQueryLifecycle = {}): Observable<DatabaseQueryResult> {
     this.initialize();
     return new Observable<DatabaseQueryResult>((subscriber) => {
-      const task = this.enqueue('observable', term, (result) => { subscriber.next(result); subscriber.complete(); }, undefined, onCancel);
+      const task = this.enqueue('observable', term, (result) => { subscriber.next(result); subscriber.complete(); }, undefined, lifecycle);
       return () => { if (!task.settled) this.cancelTask('observable', task); };
     });
   }
@@ -93,7 +100,7 @@ export class InMemoryDatabaseService {
   snapshot(laneName: DatabaseLane): DatabaseLaneSnapshot {
     const lane = this.lanes[laneName]; const active = lane.tasks[0];
     return {
-      ...(active ? { active: { id: active.id, term: active.term, progress: Math.round(active.cursor / this.developers.length * 100) } } : {}),
+      ...(active ? { active: { id: active.id, term: active.term, progress: Math.round(active.cursor / this.developers.length * 100), latest: active.id === lane.latestTaskId } } : {}),
       queued: lane.tasks.slice(1).map((task) => ({ id: task.id, term: task.term })),
       cancelled: [...lane.cancelled]
     };
@@ -110,9 +117,12 @@ export class InMemoryDatabaseService {
     this.skillsByDeveloper = this.developers.map((developer) => [developer.id % this.skills.length, (developer.id + 3) % this.skills.length, (developer.id + 7) % this.skills.length]);
   }
 
-  private enqueue(laneName: DatabaseLane, term: string, resolve: QueryTask['resolve'], reject?: QueryTask['reject'], onCancel?: QueryTask['onCancel']): QueryTask {
-    const task: QueryTask = { id: ++this.taskId, term: term.toLowerCase(), cursor: 0, matches: 0, startedAt: performance.now(), settled: false, resolve, ...(reject ? { reject } : {}), ...(onCancel ? { onCancel } : {}) };
-    this.lanes[laneName].tasks.push(task);
+  private enqueue(laneName: DatabaseLane, term: string, resolve: QueryTask['resolve'], reject?: QueryTask['reject'], lifecycle?: DatabaseQueryLifecycle): QueryTask {
+    const lane = this.lanes[laneName];
+    const task: QueryTask = { id: ++this.taskId, term: term.toLowerCase(), cursor: 0, matches: 0, startedAt: 0, settled: false, executing: false, resolve, ...(reject ? { reject } : {}), ...(lifecycle ? { lifecycle } : {}) };
+    lane.tasks.push(task);
+    lane.latestTaskId = task.id;
+    if (lane.tasks.length > 1) lifecycle?.queued?.();
     this.laneChanges.next();
     this.schedule(laneName);
     return task;
@@ -125,6 +135,11 @@ export class InMemoryDatabaseService {
       lane.timer = undefined;
       const task = lane.tasks[0];
       if (task && !task.settled) {
+        if (!task.executing) {
+          task.executing = true;
+          task.startedAt = performance.now();
+          task.lifecycle?.executing?.();
+        }
         this.processChunk(task);
         if (task.settled) lane.tasks.shift();
         this.laneChanges.next();
@@ -153,9 +168,15 @@ export class InMemoryDatabaseService {
   private cancelTask(laneName: DatabaseLane, task: QueryTask): void {
     task.settled = true;
     const lane = this.lanes[laneName];
+    const wasActive = lane.tasks[0] === task;
     lane.tasks = lane.tasks.filter((candidate) => candidate !== task);
     lane.cancelled = [...lane.cancelled.slice(-4), task.term];
-    task.onCancel?.({ rowsScanned: this.joinRows(task.cursor), rowsAvoided: this.joinRows(this.developers.length - task.cursor) });
+    task.lifecycle?.cancelled?.({ rowsScanned: this.joinRows(task.cursor), rowsAvoided: this.joinRows(this.developers.length - task.cursor) });
+    if (wasActive && lane.timer !== undefined) {
+      window.clearTimeout(lane.timer);
+      lane.timer = undefined;
+      this.schedule(laneName);
+    }
     this.laneChanges.next();
   }
 
@@ -167,7 +188,7 @@ export class InMemoryDatabaseService {
     for (const task of tasks) {
       if (task.settled) continue;
       task.settled = true;
-      task.onCancel?.({ rowsScanned: this.joinRows(task.cursor), rowsAvoided: this.joinRows(this.developers.length - task.cursor) });
+      task.lifecycle?.cancelled?.({ rowsScanned: this.joinRows(task.cursor), rowsAvoided: this.joinRows(this.developers.length - task.cursor) });
       task.reject?.(new DOMException('Database session cancelled', 'AbortError'));
     }
     this.laneChanges.next();
