@@ -13,6 +13,24 @@ npm run build
 
 Open `http://localhost:4200`.
 
+## Presentation Deck Mode
+
+Click **Start Presentation** on the landing page to deliver the complete presentation inside the Angular application. The deck has **17 steps** and alternates between concept slides, the six real interactive demos, focused takeaways, the Decision Guide, and final takeaways.
+
+- **Next:** Right Arrow or Space
+- **Previous:** Left Arrow
+- **Exit:** Escape or the Exit button
+- **Fullscreen:** `F` or the Fullscreen button when supported by the browser
+- **Jump to a section:** open the compact menu in the presentation header
+
+A bookmarkable, GitHub Pages-safe entry is available at `?presentation=true`; `&slide=6` optionally opens a specific one-based step. Presentation mode uses query parameters rather than a new route, so refreshing `/promise-observable-lab/?presentation=true` does not require server-side fallback routing.
+
+Live presentation steps reuse the actual Baseline, Search, Rapid Selection, Dashboard, Cleanup, and Sequential Workflow implementations. There is no presentation-only simulation or timing logic. Slides never advance automatically when a demo completes. Exiting or changing slides clears active requests, timers, subscriptions, and queued database work.
+
+The normal six-demo Lab remains available through **Explore Lab**.
+
+Recommended sequence: Title → async shape → Baseline intro/demo → Search intro/demo/takeaway → Rapid Selection intro/demo → Dashboard intro/demo → lifecycle intro/Cleanup demo → Promise comeback/Sequential demo → Decision Guide → Final Takeaways.
+
 ## Learning path
 
 | # | Demonstration | Verdict |

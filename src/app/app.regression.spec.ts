@@ -22,7 +22,7 @@ describe('Full six-scenario application regression', () => {
     TestBed.inject(ComparisonRunnerService).setSpeed('normal');
     fixture = TestBed.createComponent(AppComponent); fixture.detectChanges();
   });
-  afterEach(() => { fixture?.destroy(); vi.restoreAllMocks(); vi.useRealTimers(); });
+  afterEach(() => { fixture?.destroy(); window.history.replaceState({}, '', '/'); vi.restoreAllMocks(); vi.useRealTimers(); });
 
   it('renders six compact demo links followed by the Decision Guide', () => {
     const host = fixture.nativeElement as HTMLElement;
@@ -45,20 +45,69 @@ describe('Full six-scenario application regression', () => {
     expect(host.querySelectorAll('.comparison-grid .code-toggle')).toHaveLength(2);
   });
 
-  it('provides presentation navigation through all six demos and onward to the guide', () => {
+  it('starts the complete 17-step presentation deck from the landing page', () => {
     const host = fixture.nativeElement as HTMLElement;
-    fixture.componentInstance.setPresentationMode(true); fixture.detectChanges();
+    host.querySelector<HTMLButtonElement>('.hero-actions .deck-primary')!.click(); fixture.detectChanges();
     expect(host.querySelector('.app')?.classList.contains('presentation')).toBe(true);
-    const path = host.querySelector('.presentation-path')!;
-    expect(path.textContent).toContain('DEMO 1 OF 6');
-    const buttons = path.querySelectorAll<HTMLButtonElement>('button');
-    expect(buttons[0]?.disabled).toBe(true);
-    buttons[1]!.click(); fixture.detectChanges();
+    expect(host.querySelector('.deck-stage')?.getAttribute('data-slide')).toBe('title');
+    expect(host.querySelector('.title-slide')?.textContent).toContain('Choosing the right shape for asynchronous work in Angular');
+    expect(host.querySelector('.deck-bar')?.textContent).toContain('1 / 17');
+    expect(window.location.search).toContain('presentation=true');
+  });
+
+  it('moves next and previous with controls and keyboard, and Escape exits', () => {
+    const app = fixture.componentInstance; app.startPresentation(); fixture.detectChanges();
+    const controls = (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.deck-bar nav button');
+    controls[1]!.click(); fixture.detectChanges();
+    expect(app.activeSlide).toBe(1);
+    controls[0]!.click(); fixture.detectChanges();
+    expect(app.activeSlide).toBe(0);
+    controls[1]!.focus();
+    controls[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })); fixture.detectChanges();
+    expect(app.activeSlide).toBe(1); expect((fixture.nativeElement as HTMLElement).textContent).toContain('Why does Angular use Observables so heavily?');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' })); fixture.detectChanges();
+    expect(app.activeSlide).toBe(2);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' })); fixture.detectChanges();
+    expect(app.activeSlide).toBe(1);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); fixture.detectChanges();
+    expect(app.presentationMode).toBe(false); expect((fixture.nativeElement as HTMLElement).querySelector('.scenario-sidebar')).toBeTruthy();
+  });
+
+  it('reuses the real Baseline demo and Run Both from presentation', async () => {
+    const app = fixture.componentInstance; app.startPresentation(); app.goToPresentationSlide(3); fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    expect(app.presentationStep.id).toBe('baseline-demo'); expect(app.activeId).toBe('basic');
+    expect(host.querySelectorAll('app-comparison-panel')).toHaveLength(2);
+    host.querySelector<HTMLButtonElement>('.workspace .run-both')!.click(); await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(2_100); fixture.detectChanges();
+    expect(app.promiseState.metrics.completed).toBe(1); expect(app.observableState.metrics.completed).toBe(1);
+    expect(Math.abs(app.promiseState.metrics.latestLatency - app.observableState.metrics.latestLatency)).toBeLessThan(40);
+  });
+
+  it('cleans up active work when presentation exits', async () => {
+    const app = fixture.componentInstance; app.startPresentation(); app.goToPresentationSlide(5); fixture.detectChanges();
+    app.runBoth(); await Promise.resolve(); await vi.advanceTimersByTimeAsync(1_000);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    app.exitPresentation(); fixture.detectChanges();
+    expect(app.presentationMode).toBe(false); expect(app.promiseState.loading).toBe(false); expect(app.observableState.loading).toBe(false);
+    expect(app.promiseLane.queued).toHaveLength(0); expect(app.observableLane.queued).toHaveLength(0); expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('renders the Decision Guide and final Takeaways as deck steps', () => {
+    const app = fixture.componentInstance; app.startPresentation(); app.goToPresentationSlide(15); fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('#decision-guide')?.textContent).toContain('WHAT SHAPE IS YOUR ASYNC WORK?');
+    app.nextPresentationSlide(); fixture.detectChanges();
+    expect(host.querySelector('.final-slide')?.textContent).toContain('It becomes powerful when time is part of the problem.');
+    expect(host.querySelector('.final-slide')?.textContent).not.toContain("DON'T ASK");
+  });
+
+  it('supports a GitHub Pages-safe direct presentation query URL', () => {
+    fixture.destroy(); window.history.replaceState({}, '', '/promise-observable-lab/?presentation=true&slide=6');
+    fixture = TestBed.createComponent(AppComponent); fixture.detectChanges();
+    expect(fixture.componentInstance.presentationMode).toBe(true);
+    expect(fixture.componentInstance.presentationStep.id).toBe('search-demo');
     expect(fixture.componentInstance.activeId).toBe('search');
-    expect(host.querySelector('.presentation-path')?.textContent).toContain('DEMO 2 OF 6');
-    fixture.componentInstance.selectScenario('sequential'); fixture.detectChanges();
-    expect(host.querySelector('.presentation-path')?.textContent).toContain('DECISION GUIDE');
-    expect(host.querySelector<HTMLButtonElement>('.presentation-path button:last-child')?.disabled).toBe(false);
   });
 
   it('renders precise timeline values and separate latest-useful metrics in the DOM', async () => {

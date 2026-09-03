@@ -127,3 +127,13 @@ Validation after this polish pass: `npm test` passes 25 of 25 tests across three
 ## Manual QA
 
 Browser automation was attempted for this polish pass, but no browser backend was connected. Real screenshot QA was therefore not performed. Manually verify 1920×1080, 1440×900, 1366×768, 768px, 430px, and 390px layouts; watch Search mid-run and completed, Rapid Selection mid-run, Dashboard emissions, Cleanup after navigation, Sequential completion, timeline auto-scroll, Presentation Mode controls, and the Decision Guide.
+
+## Presentation Deck Mode
+
+The website now contains a typed **17-step** presentation: Title, async-shape question, Baseline intro/demo, Search intro/demo/takeaway, Rapid Selection intro/demo, Dashboard intro/demo, lifecycle intro/Cleanup demo, Promise comeback/Sequential demo, Decision Guide, and Final Takeaways.
+
+Use **Start Presentation**, Previous/Next, Left/Right Arrow, Space, Escape, the optional Fullscreen control, and the compact section menu. `?presentation=true&slide=N` provides static-host-safe direct entry without adding a route that could cause a GitHub Pages refresh 404.
+
+Demo steps reveal the existing scenario components and state; they do not duplicate simulations or introduce presentation-only timing. Changing slides or exiting uses the Lab cleanup paths, including database cancellation, AbortController cleanup, RxJS unsubscription, and timer removal. Demo completion never advances automatically. Normal Lab mode remains available through **Explore Lab**.
+
+Automated coverage now includes deck entry, 17-step navigation, controls and keyboard navigation, direct query entry, live-demo reuse, Run Both from the deck, equivalent Baseline timing, cleanup on exit, the Decision Guide, final Takeaways, and normal Lab availability. Validation status: `npm test` passes **30 of 30** tests across three files; the Angular production build passes.

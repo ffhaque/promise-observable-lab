@@ -1,4 +1,29 @@
 <div class="app" [class.presentation]="presentationMode">
+  @if (presentationMode) {
+    <header class="deck-bar">
+      <button type="button" class="deck-menu-button" aria-label="Open presentation menu" [attr.aria-expanded]="presentationMenuOpen" (click)="togglePresentationMenu()">☰</button>
+      <span class="deck-brand">PROMISE <i>VS</i> OBSERVABLE</span>
+      <nav aria-label="Presentation controls">
+        <button type="button" (click)="previousPresentationSlide()" [disabled]="activeSlide === 0">← PREVIOUS</button>
+        <strong>{{ activeSlide + 1 }} / {{ presentationSteps.length }}</strong>
+        <button type="button" (click)="nextPresentationSlide()" [disabled]="activeSlide === presentationSteps.length - 1">NEXT →</button>
+      </nav>
+      <div class="deck-actions">
+        <button type="button" (click)="toggleFullscreen()" [disabled]="!fullscreenAvailable">FULLSCREEN</button>
+        <button type="button" class="deck-exit" (click)="exitPresentation()">EXIT</button>
+      </div>
+      <span class="deck-progress" [style.width.%]="presentationProgress"></span>
+    </header>
+    @if (presentationMenuOpen) {
+      <nav class="deck-menu" aria-label="Presentation sections">
+        @for (step of presentationSteps; track step.id; let index = $index) {
+          @if (index === 0 || step.section !== presentationSteps[index - 1]?.section) {
+            <button type="button" [class.active]="step.section === presentationStep.section" (click)="goToPresentationSlide(index)"><span>{{ index + 1 }}</span>{{ step.section }}</button>
+          }
+        }
+      </nav>
+    }
+  } @else {
   <header class="topbar">
     <a class="brand" href="#lab" aria-label="Promise vs Observable Lab home">
       <span class="brand-mark"><i></i><i></i></span>
@@ -11,16 +36,105 @@
           <button type="button" [class.active]="presentationSpeed === speed" [attr.aria-pressed]="presentationSpeed === speed" (click)="setPresentationSpeed($any(speed))">{{ speed }}</button>
         }
       </div>
-      <label class="mode-toggle"><input type="checkbox" [ngModel]="presentationMode" (ngModelChange)="setPresentationMode($event)"><span></span> PRESENTATION MODE</label>
+      <button type="button" class="header-present" (click)="startPresentation()">▶ PRESENT</button>
     </div>
   </header>
+  }
 
-  <main id="lab">
+  @if (presentationMode && !isPresentationDemo && !isPresentationGuide) {
+    <main class="deck-stage" [attr.data-slide]="presentationStep.id" aria-live="polite">
+      @switch (presentationStep.id) {
+        @case ('title') {
+          <section class="deck-slide title-slide">
+            <span class="deck-kicker">ANGULAR / RXJS INTERACTIVE LAB</span>
+            <h1>Promise <i>vs</i> Observable</h1>
+            <h2>Choosing the right shape for asynchronous work in Angular</h2>
+            <p>Promise ≠ bad <b>·</b> Observable ≠ always better</p>
+            <button type="button" class="deck-primary" (click)="nextPresentationSlide()">START →</button>
+          </section>
+        }
+        @case ('question') {
+          <section class="deck-slide">
+            <span class="deck-kicker">THE QUESTION</span><h1>Why does Angular use Observables so heavily?</h1>
+            <div class="shape-comparison">
+              <article class="promise-shape"><h2>PROMISE</h2><div>START <i>↓</i> ONE EVENTUAL RESULT <i>↓</i> DONE</div></article>
+              <span class="versus">VS</span>
+              <article class="observable-shape"><h2>OBSERVABLE</h2><div>SUBSCRIBE <i>↓</i> VALUE <i>↓</i> VALUE <i>↓</i> VALUE <i>↓</i> UNSUBSCRIBE</div></article>
+            </div>
+            <blockquote>The important difference is not syntax.<br><strong>It is the shape and lifetime of the asynchronous work.</strong></blockquote>
+          </section>
+        }
+        @case ('baseline-intro') {
+          <section class="deck-slide intro-slide">
+            <span class="deck-kicker">BASELINE</span><h1>First, let's make the comparison fair.</h1><h2>One request. One response.</h2>
+            <div class="flow-pair"><article><b>PROMISE</b><span>REQUEST</span><i>↓</i><span>RESULT</span></article><article><b>OBSERVABLE</b><span>REQUEST</span><i>↓</i><span>RESULT</span></article></div>
+            <p class="deck-question">Which one is faster?</p><button type="button" class="deck-primary" (click)="nextPresentationSlide()">RUN THE COMPARISON →</button>
+          </section>
+        }
+        @case ('search-intro') {
+          <section class="deck-slide intro-slide">
+            <span class="deck-kicker">CHANGING INTENT</span><h1>What if the user changes their mind before the request finishes?</h1>
+            <div class="intent-sequence"><span>ang</span><i>→</i><span>angu</span><i>→</i><span>angul</span><i>→</i><strong>angular<small>ONLY THIS ONE MATTERS</small></strong></div>
+            <blockquote>What happens to all of the old work?</blockquote>
+          </section>
+        }
+        @case ('search-takeaway') {
+          <section class="deck-slide takeaway-slide">
+            <span class="deck-kicker">SEARCH TAKEAWAY</span><h1>What did switchMap actually buy us?</h1>
+            <div class="takeaway-flow"><b>NEW INTENT</b><i>↓</i><b>OLD WORK BECOMES OBSOLETE</b><i>↓</i><b>UNSUBSCRIBE / TEARDOWN</b><i>↓</i><strong>CAPACITY RELEASED</strong></div>
+            <div class="truth-pair"><article class="promise-shape">IGNORE STALE RESULT <b>≠</b> CANCEL STALE WORK</article><article class="observable-shape"><code>switchMap</code> = LATEST-ONLY LIFECYCLE</article></div>
+            <blockquote>Cancellation can improve the latency of useful work when obsolete work consumes resources.</blockquote>
+          </section>
+        }
+        @case ('selection-intro') {
+          <section class="deck-slide intro-slide">
+            <span class="deck-kicker">CHANGING WORKFLOWS</span><h1>switchMap isn't just for search boxes.</h1>
+            <div class="intent-sequence people-sequence"><span>Sarah</span><i>→</i><span>John</span><i>→</i><span>Michael</span><i>→</i><strong>Jessica<small>ACTIVE SELECTION</small></strong></div>
+            <div class="workflow-sequence"><span>LOAD USER</span><i>→</i><span>LOAD TEAM</span><i>→</i><span>LOAD PROJECTS</span><i>→</i><span>LOAD PERMISSIONS</span><i>→</i><span>BUILD DASHBOARD</span></div>
+            <blockquote>What happens to Sarah's workflow after Jessica becomes active?</blockquote>
+          </section>
+        }
+        @case ('dashboard-intro') {
+          <section class="deck-slide intro-slide">
+            <span class="deck-kicker">VALUES OVER TIME</span><h1>What if the data never really “finishes”?</h1>
+            <div class="live-values"><article><b>CPU</b><span>42 → 51 → 46 → …</span></article><article><b>USERS</b><span>1280 → 1310 → 1342 → …</span></article><article><b>ERRORS</b><span>0.6 → 0.7 → 0.5 → …</span></article></div>
+            <p class="deck-question">Is this one asynchronous result?</p>
+            <div class="truth-pair"><article class="promise-shape">PROMISE <b>→</b> SNAPSHOT</article><article class="observable-shape">OBSERVABLE <b>→</b> CONTINUING VALUES</article></div>
+          </section>
+        }
+        @case ('lifecycle-intro') {
+          <section class="deck-slide intro-slide">
+            <span class="deck-kicker">LIFECYCLE OWNERSHIP</span><h1>Who owns the asynchronous work?</h1>
+            <div class="takeaway-flow lifecycle-flow"><b>COMPONENT CREATED</b><i>↓</i><b>REQUEST STARTED</b><i>↓</i><b>USER NAVIGATES AWAY</b><i>↓</i><strong>COMPONENT DESTROYED</strong></div>
+            <blockquote>Should the work keep running after its owner is gone?</blockquote>
+          </section>
+        }
+        @case ('promise-comeback') {
+          <section class="deck-slide intro-slide no-slide">
+            <span class="deck-kicker">THE PROMISE COMEBACK</span><h1>So should everything be an Observable?</h1><strong class="giant-no">NO.</strong>
+            <div class="workflow-sequence"><span>CREATE ACCOUNT</span><i>→</i><span>UPLOAD AVATAR</span><i>→</i><span>SEND WELCOME EMAIL</span></div>
+            <div class="check-list"><span>✓ ONE-SHOT</span><span>✓ SEQUENTIAL</span><span>✓ FIXED CONTEXT</span><span>✓ NO CONTINUING VALUES</span></div>
+            <p class="deck-question">Which version is easier to understand?</p>
+          </section>
+        }
+        @case ('final') {
+          <section class="deck-slide final-slide">
+            <span class="deck-kicker">FINAL TAKEAWAYS</span><h1>Promise <i>vs</i> Observable</h1>
+            <div class="final-columns"><article><h2>PROMISE</h2><ul><li>One eventual result</li><li>Straightforward sequential work</li><li>async/await readability</li><li>Simple one-shot operations</li></ul></article><article><h2>OBSERVABLE</h2><ul><li>Changing context</li><li>Latest-only work</li><li>Values over time</li><li>Composition and lifecycle</li></ul></article><article><h2>BOTH</h2><ul><li>Can solve many of the same tasks</li><li>Performance alone is not decisive</li><li>Use the simplest accurate model</li></ul></article></div>
+            <p>Observable is not inherently faster. <b>It becomes powerful when time is part of the problem.</b></p>
+          </section>
+        }
+      }
+    </main>
+  }
+
+  <main id="lab" [class.deck-demo-host]="isPresentationDemo" [class.deck-guide-host]="isPresentationGuide" [attr.data-scenario]="activeId">
     <section class="hero">
       <div class="hero-copy">
         <span class="kicker">INTERACTIVE / LIVE SIMULATION</span>
         <h1>See asynchronous behavior,<br><span>not just the syntax.</span></h1>
         <p>Run equivalent implementations on a shared clock. Watch work queue, cancel, emit, and stay synchronized—in real time.</p>
+        <div class="hero-actions"><button type="button" class="deck-primary" (click)="startPresentation()">▶ START PRESENTATION</button><a href="#scenarios">EXPLORE LAB</a></div>
       </div>
       <div class="signal" aria-hidden="true">
         <div class="signal-label"><span>ASYNC SIGNAL</span><span>LIVE</span></div>
@@ -29,7 +143,7 @@
       </div>
     </section>
 
-    <div class="lab-layout">
+    <div id="scenarios" class="lab-layout">
       <aside class="scenario-sidebar">
         <div class="sidebar-heading"><span>LEARNING PATH</span><b>6 FOCUSED DEMOS</b></div>
         <nav class="scenario-nav" aria-label="Demo scenarios">
@@ -49,14 +163,6 @@
       </aside>
 
       <div class="lab-content">
-      @if (presentationMode) {
-        <div class="presentation-path" aria-label="Recommended presentation path">
-          <button type="button" (click)="previousPresentationDemo()" [disabled]="presentationPathIndex <= 0">← PREVIOUS DEMO</button>
-          <span>DEMO {{ presentationPathIndex >= 0 ? presentationPathIndex + 1 : '—' }} OF 6 · {{ scenario.name.toUpperCase() }}</span>
-          <button type="button" (click)="nextPresentationDemo()" [disabled]="presentationPathIndex < 0">{{ presentationPathIndex === 5 ? 'DECISION GUIDE' : 'NEXT' }} →</button>
-        </div>
-      }
-
     @if (isCoreScenario) {
     <section class="workspace">
       <div class="scenario-heading">
@@ -155,6 +261,10 @@
       </div>
     </div>
 
+    @if (isPresentationDemo) {
+      <div class="deck-demo-next"><span>{{ scenario.result }}</span><button type="button" class="deck-primary" (click)="nextPresentationSlide()">NEXT →</button></div>
+    }
+
     <section id="decision-guide" class="final-comparison">
       <span class="kicker">DECISION GUIDE</span><h2>WHAT SHAPE IS YOUR ASYNC WORK?</h2>
       <div class="decision-tree" aria-label="Asynchronous work decision flow">
@@ -184,7 +294,6 @@
         </table>
       </div>
       <div class="takeaway final-message"><div><i class="promise-dot"></i><p><b>Observable is not inherently faster.</b> Use Promise when a simple one-shot async flow is all you need.</p></div><div><i class="observable-dot"></i><p><b>Observable becomes powerful</b> when time, changing context, repeated values, or lifecycle are part of the problem.</p></div></div>
-      <div class="closing-principle"><small>DON'T ASK: “WHICH ONE IS BETTER?”</small><strong>Ask: “What is the shape of my asynchronous problem?”</strong></div>
     </section>
   </main>
 

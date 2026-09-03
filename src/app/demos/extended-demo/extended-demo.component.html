@@ -20,6 +20,13 @@
 
   <app-primary-result [label]="primaryResult.label" [promiseValue]="primaryResult.promise" [observableValue]="primaryResult.observable" [promiseDetail]="primaryResult.promiseDetail" [observableDetail]="primaryResult.observableDetail" [comparison]="primaryResult.comparison" [note]="primaryResult.note" />
 
+  @if (scenarioId() === 'sequential') {
+    <div class="sequential-code" aria-label="Sequential workflow code comparison">
+      <section><b>PROMISE · ASYNC/AWAIT</b><pre><code>{{ spec.promiseCode }}</code></pre></section>
+      <section><b>OBSERVABLE · CONCATMAP</b><pre><code>{{ spec.observableCode }}</code></pre></section>
+    </div>
+  }
+
   <div class="visual-grid">
     <section class="visual promise-visual"><header>PROMISE BEHAVIOR</header>
       @for (item of promiseItems; track $index) { <div class="item" [class]="'item ' + item.status"><span>{{ item.label }}</span><b>{{ item.status === 'loading' ? 'RUNNING' : item.status.toUpperCase() }}</b></div> }

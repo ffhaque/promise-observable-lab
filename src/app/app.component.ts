@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, HostListener, ViewChild, inject } from '@angular/core';
 import { FormsModule, FormControl, ReactiveFormsModule } from '@angular/forms';
 import { Subject, Subscription, combineLatest, concatMap, debounce, distinctUntilChanged, finalize, from, map, of, switchMap, takeUntil, tap, timer } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -19,6 +19,8 @@ type StageStatus = 'waiting' | 'running' | 'completed' | 'cancelled' | 'avoided'
 interface WorkflowView { id: number; person: string; status: 'running' | 'completed' | 'cancelled' | 'stale'; startedAt: number; stages: { name: string; status: StageStatus }[]; }
 interface DashboardView { cpu: number; users: number; errors: number; }
 interface PrimaryResultView { label: string; promise: string; observable: string; promiseDetail: string; observableDetail: string; comparison: string; note: string; }
+type PresentationStepType = 'title' | 'concept' | 'intro' | 'demo' | 'takeaway' | 'guide' | 'final';
+interface PresentationStep { id: string; type: PresentationStepType; title: string; section: string; scenarioId?: ScenarioId; }
 
 @Component({
   selector: 'app-root', standalone: true,
@@ -28,6 +30,7 @@ interface PrimaryResultView { label: string; promise: string; observable: string
   styleUrls: ['./app.component.scss', './app.full-width.scss']
 })
 export class AppComponent {
+  @ViewChild(ExtendedDemoComponent) private extendedDemo?: ExtendedDemoComponent;
   private readonly api = inject(AsyncDemoService);
   private readonly clock = inject(ComparisonRunnerService);
   private readonly database = inject(InMemoryDatabaseService);
@@ -47,6 +50,8 @@ export class AppComponent {
   promiseState = emptyState();
   observableState = emptyState();
   presentationMode = false;
+  activeSlide = 0;
+  presentationMenuOpen = false;
   presentationSpeed: PresentationSpeed = 'normal';
   sharedRun = false;
   readonly searchControl = new FormControl('', { nonNullable: true });
@@ -70,7 +75,25 @@ export class AppComponent {
   private promiseSelectionLatest = 0;
   private workflowId = 0;
   private readonly workflowStages = ['Load User', 'Load Team', 'Load Projects', 'Load Permissions', 'Build Dashboard'];
-  private readonly presentationPath: ScenarioId[] = ['basic', 'search', 'selection', 'dashboard', 'lifecycle', 'sequential'];
+  readonly presentationSteps: readonly PresentationStep[] = [
+    { id: 'title', type: 'title', title: 'Promise vs Observable', section: 'Title' },
+    { id: 'question', type: 'concept', title: 'Why does Angular use Observables so heavily?', section: 'Title' },
+    { id: 'baseline-intro', type: 'intro', title: "First, let's make the comparison fair.", section: 'Baseline' },
+    { id: 'baseline-demo', type: 'demo', title: 'Baseline Request', section: 'Baseline', scenarioId: 'basic' },
+    { id: 'search-intro', type: 'intro', title: 'What if the user changes their mind?', section: 'Search', scenarioId: 'search' },
+    { id: 'search-demo', type: 'demo', title: 'Search Under Load', section: 'Search', scenarioId: 'search' },
+    { id: 'search-takeaway', type: 'takeaway', title: 'What did switchMap actually buy us?', section: 'Search' },
+    { id: 'selection-intro', type: 'intro', title: "switchMap isn't just for search boxes.", section: 'Rapid Selection', scenarioId: 'selection' },
+    { id: 'selection-demo', type: 'demo', title: 'Rapid Selection Workflow', section: 'Rapid Selection', scenarioId: 'selection' },
+    { id: 'dashboard-intro', type: 'intro', title: 'What if the data never really finishes?', section: 'Live Dashboard', scenarioId: 'dashboard' },
+    { id: 'dashboard-demo', type: 'demo', title: 'Live Dashboard', section: 'Live Dashboard', scenarioId: 'dashboard' },
+    { id: 'lifecycle-intro', type: 'intro', title: 'Who owns the asynchronous work?', section: 'Component Cleanup', scenarioId: 'lifecycle' },
+    { id: 'lifecycle-demo', type: 'demo', title: 'Component Cleanup', section: 'Component Cleanup', scenarioId: 'lifecycle' },
+    { id: 'promise-comeback', type: 'concept', title: 'So should everything be an Observable?', section: 'Sequential Workflow', scenarioId: 'sequential' },
+    { id: 'sequential-demo', type: 'demo', title: 'Sequential Workflow', section: 'Sequential Workflow', scenarioId: 'sequential' },
+    { id: 'decision-guide', type: 'guide', title: 'What shape is your async work?', section: 'Decision Guide' },
+    { id: 'final', type: 'final', title: 'Promise vs Observable', section: 'Final Takeaways' }
+  ];
   promiseLane: DatabaseLaneSnapshot = { queued: [], cancelled: [] };
   observableLane: DatabaseLaneSnapshot = { queued: [], cancelled: [] };
 
@@ -81,6 +104,14 @@ export class AppComponent {
       this.promiseLane = this.database.snapshot('promise'); this.observableLane = this.database.snapshot('observable'); this.cdr.markForCheck();
     });
     this.destroyRef.onDestroy(() => this.cleanup());
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('presentation') === 'true') {
+      const requestedSlide = Number(params.get('slide')) - 1;
+      this.activeSlide = Number.isInteger(requestedSlide) ? Math.min(Math.max(requestedSlide, 0), this.presentationSteps.length - 1) : 0;
+      this.presentationMode = true;
+      const scenarioId = this.presentationSteps[this.activeSlide]?.scenarioId;
+      if (scenarioId) this.activeId = scenarioId;
+    }
   }
 
   get scenario(): Scenario { return this.scenarios.find((item) => item.id === this.activeId)!; }
@@ -102,7 +133,11 @@ export class AppComponent {
       dashboard: 'Watch snapshot age increase while three live sources keep the Observable view synchronized.'
     } satisfies Record<CoreScenarioId, string>)[this.activeId as CoreScenarioId];
   }
-  get presentationPathIndex(): number { return this.presentationPath.indexOf(this.activeId); }
+  get presentationStep(): PresentationStep { return this.presentationSteps[this.activeSlide]!; }
+  get isPresentationDemo(): boolean { return this.presentationMode && this.presentationStep.type === 'demo'; }
+  get isPresentationGuide(): boolean { return this.presentationMode && this.presentationStep.type === 'guide'; }
+  get presentationProgress(): number { return ((this.activeSlide + 1) / this.presentationSteps.length) * 100; }
+  get fullscreenAvailable(): boolean { return Boolean(document.fullscreenEnabled); }
   get primaryResult(): PrimaryResultView {
     switch (this.activeId as CoreScenarioId) {
       case 'search': return { label: 'LATEST USEFUL RESULT', promise: this.duration(this.promiseState.metrics.latestLatency), observable: this.duration(this.observableState.metrics.latestLatency), promiseDetail: this.promiseState.metrics.latestLatency ? `${this.promiseState.metrics.stale} obsolete queries completed` : `${this.promiseLane.queued.length} queries queued`, observableDetail: `${this.observableState.metrics.cancelled} obsolete queries cancelled`, comparison: this.searchGain ? `Observable useful result arrived ${this.searchGain}% sooner` : '', note: 'Observable did not execute the same query faster. switchMap cancelled obsolete work, releasing constrained capacity for the newest useful request.' };
@@ -112,17 +147,43 @@ export class AppComponent {
     }
   }
 
-  previousPresentationDemo(): void { const index = this.presentationPathIndex; if (index > 0) this.selectScenario(this.presentationPath[index - 1]!); }
-  nextPresentationDemo(): void {
-    const index = this.presentationPathIndex;
-    if (index >= 0 && index < this.presentationPath.length - 1) this.selectScenario(this.presentationPath[index + 1]!);
-    else if (index === this.presentationPath.length - 1) document.getElementById('decision-guide')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  startPresentation(): void { this.presentationMode = true; this.goToPresentationSlide(0); }
+  setPresentationMode(enabled: boolean): void { enabled ? this.startPresentation() : this.exitPresentation(); }
+  previousPresentationSlide(): void { if (this.activeSlide > 0) this.goToPresentationSlide(this.activeSlide - 1); }
+  nextPresentationSlide(): void { if (this.activeSlide < this.presentationSteps.length - 1) this.goToPresentationSlide(this.activeSlide + 1); }
+  goToPresentationSlide(index: number): void {
+    if (index < 0 || index >= this.presentationSteps.length) return;
+    this.stopActiveWork();
+    this.activeSlide = index;
+    this.presentationMenuOpen = false;
+    const scenarioId = this.presentationStep.scenarioId;
+    if (scenarioId) this.activeId = scenarioId;
+    this.promiseState.codeOpen = false; this.observableState.codeOpen = false;
+    this.updatePresentationUrl();
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    this.cdr.markForCheck();
+  }
+  exitPresentation(): void {
+    this.stopActiveWork();
+    this.presentationMode = false; this.presentationMenuOpen = false;
+    this.updatePresentationUrl(); this.cdr.markForCheck();
+  }
+  togglePresentationMenu(): void { this.presentationMenuOpen = !this.presentationMenuOpen; this.cdr.markForCheck(); }
+  async toggleFullscreen(): Promise<void> {
+    if (!document.fullscreenEnabled) return;
+    if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen();
   }
 
-  setPresentationMode(enabled: boolean): void {
-    this.presentationMode = enabled;
-    if (enabled) { this.promiseState.codeOpen = false; this.observableState.codeOpen = false; }
-    this.cdr.markForCheck();
+  @HostListener('window:keydown', ['$event'])
+  handlePresentationKey(event: KeyboardEvent): void {
+    if (!this.presentationMode) return;
+    if (event.key === 'Escape') { event.preventDefault(); this.exitPresentation(); return; }
+    if (this.isEditableTarget(event.target)) return;
+    if (event.key === 'ArrowRight') { event.preventDefault(); this.nextPresentationSlide(); return; }
+    if (event.key === 'ArrowLeft') { event.preventDefault(); this.previousPresentationSlide(); return; }
+    if (event.key === ' ' && !this.isInteractiveTarget(event.target)) { event.preventDefault(); this.nextPresentationSlide(); return; }
+    if (event.key.toLowerCase() === 'f' && document.fullscreenEnabled) { event.preventDefault(); void this.toggleFullscreen(); }
   }
 
   setPresentationSpeed(speed: PresentationSpeed): void { this.presentationSpeed = speed; this.clock.setSpeed(speed); this.reset(); }
@@ -383,6 +444,31 @@ export class AppComponent {
   }
   private resetSide(side: Side): void { if (side === 'promise') { this.database.cancel('promise'); this.promiseControllers.forEach((c) => c.abort()); this.promiseControllers.clear(); this.promiseState = emptyState(); } else { this.database.cancel('observable'); this.selectionCancel.next(); this.observableSub?.unsubscribe(); this.observableState = emptyState(); } }
   private cleanup(): void { this.searchCancel.next(); this.selectionCancel.next(); this.database.cancelAll(); this.promiseControllers.forEach((controller) => controller.abort()); this.promiseControllers.clear(); this.observableSub?.unsubscribe(); this.observableSub = undefined; this.autoTypeTimers.forEach((timer) => window.clearTimeout(timer)); this.autoTypeTimers = []; }
+
+  private stopActiveWork(): void {
+    this.reset();
+    this.extendedDemo?.reset();
+  }
+
+  private updatePresentationUrl(): void {
+    const url = new URL(window.location.href);
+    if (this.presentationMode) {
+      url.searchParams.set('presentation', 'true');
+      url.searchParams.set('slide', `${this.activeSlide + 1}`);
+    } else {
+      url.searchParams.delete('presentation');
+      url.searchParams.delete('slide');
+    }
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  private isEditableTarget(target: EventTarget | null): boolean {
+    return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+  }
+
+  private isInteractiveTarget(target: EventTarget | null): boolean {
+    return target instanceof HTMLElement && ['BUTTON', 'A'].includes(target.tagName);
+  }
 
   private readonly descriptions: Record<CoreScenarioId, Record<Side, string>> = {
     basic: { promise: 'async/await resolves one user and clears loading in finally.', observable: 'A cold Observable emits the same user and clears loading in finalize.' },
