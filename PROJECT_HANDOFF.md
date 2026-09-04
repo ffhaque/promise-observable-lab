@@ -50,7 +50,7 @@ At Normal speed with deterministic fake timers, the final Search intent occurs a
 
 - **Baseline Request:** equivalent two-second one-shot work; timings intentionally match within scheduler noise.
 - **Search Under Load:** Observable's newest useful result arrives materially earlier because cancelled work releases lane capacity.
-- **Rapid Selection Workflow:** the latest Promise and Observable workflows intentionally take approximately equal time. Observable's advantage is obsolete stages avoided.
+- **Rapid Selection Workflow:** both sides now use independent, equivalent two-slot backend pools and identical 600 ms stage durations. Obsolete Promise workflows continue consuming or queueing for capacity; `switchMap` teardown removes the Observable's active/queued stage and releases its slot. Jessica therefore receives Observable capacity sooner, producing a real measured latest-dashboard latency advantage without a Promise-only delay.
 - **Live Dashboard:** not a speed comparison. Promise settles with a snapshot; Observable keeps emitting a synchronized view.
 - **Component Cleanup:** navigation occurs around 1.8 seconds. Observable teardown stops the timer then; the deliberately non-cooperative Promise settles around five seconds and its result is ignored. The UI reports work after destruction and underlying stop time.
 - **Sequential Workflow:** both three-stage flows use equal deterministic delays and complete at approximately equal time. Promise wins on readability.
@@ -112,7 +112,7 @@ The closing principle is: Observable is not inherently faster. It becomes powerf
 - Primary Result now uses larger tabular values, explicit Promise/Observable identity markers, an optional high-emphasis comparison statement, and a concise explanatory note.
 - Baseline shows equal duration and loaded-result status without a wall of bookkeeping metrics.
 - Search surfaces Latest User Intent, marks the newest queued or executing scheduler job, retains recent cancelled work, and promotes actual latest-useful latency, work avoided, and measured percentage. The explanatory capacity note remains visible without opening code.
-- Rapid Selection labels the newest employee workflow, promotes obsolete stages executed versus avoided, and explicitly avoids presenting equal latest-workflow time as a speed victory.
+- Rapid Selection labels the newest employee workflow, renders scheduler-derived active/queued/cancelled pool work, and measures Jessica's dashboard latency from the final selection. Its speed difference now comes from released constrained capacity rather than unequal stage timing.
 - Live Dashboard presents Snapshot versus Live as delivery shapes and keeps updates local to the changing values.
 - Component Cleanup includes parallel ownership strips: destroy → continuing Promise work → ignored result versus destroy → unsubscribe → teardown.
 - Sequential Workflow retains equal deterministic timings and uses a prominent Promise-readability conclusion while describing both approaches as correct.
@@ -130,10 +130,18 @@ Browser automation was attempted for this polish pass, but no browser backend wa
 
 ## Presentation Deck Mode
 
-The website now contains a typed **17-step** presentation: Title, async-shape question, Baseline intro/demo, Search intro/demo/takeaway, Rapid Selection intro/demo, Dashboard intro/demo, lifecycle intro/Cleanup demo, Promise comeback/Sequential demo, Decision Guide, and Final Takeaways.
+The website now contains a typed **18-step** presentation: Title, async-shape question, Baseline intro/demo, Search intro/demo/takeaway, Rapid Selection intro/demo, Dashboard intro/demo, lifecycle intro/Cleanup demo, Promise comeback/Sequential demo, Decision Guide, Final Takeaways, and Questions.
 
-Use **Start Presentation**, Previous/Next, Left/Right Arrow, Space, Escape, the optional Fullscreen control, and the compact section menu. `?presentation=true&slide=N` provides static-host-safe direct entry without adding a route that could cause a GitHub Pages refresh 404.
+Use **Start Presentation**, Previous/Next, Left/Right Arrow, Space, Escape, Home to restart, the optional Fullscreen control, and the compact section menu. `?presentation=true&slide=N` provides static-host-safe direct entry without adding a route that could cause a GitHub Pages refresh 404.
 
 Demo steps reveal the existing scenario components and state; they do not duplicate simulations or introduce presentation-only timing. Changing slides or exiting uses the Lab cleanup paths, including database cancellation, AbortController cleanup, RxJS unsubscription, and timer removal. Demo completion never advances automatically. Normal Lab mode remains available through **Explore Lab**.
 
-Automated coverage now includes deck entry, 17-step navigation, controls and keyboard navigation, direct query entry, live-demo reuse, Run Both from the deck, equivalent Baseline timing, cleanup on exit, the Decision Guide, final Takeaways, and normal Lab availability. Validation status: `npm test` passes **30 of 30** tests across three files; the Angular production build passes.
+Promise and Observable code-disclosure panels remain available on every live-demo presentation step. They start collapsed and use the existing scenario code definitions rather than presentation-only copies.
+
+Automated coverage now includes deck entry, 18-step navigation, controls and keyboard navigation, direct query entry, live-demo reuse, Run Both from the deck, equivalent Baseline timing, cleanup on exit, the Decision Guide, Final Takeaways, Questions, and normal Lab availability. The Questions step has no Next control, provides Previous/Restart/Exit behavior, exposes the deployed demo and source links, and starts no timers or subscriptions.
+
+## Rapid Selection constrained backend
+
+Rapid Selection owns two independent `SelectionBackendPool` instances, one per side. Each has capacity 2, and every Load User, Load Team, Load Projects, Load Permissions, and Build Dashboard operation uses the same deterministic 600 ms duration. Promise workflows remain legitimate sequential `async`/`await` chains and are not cancelled when context changes. Observable workflows use `switchMap`; inner teardown cancels the real pool task, removes it from active or queued work, releases the slot, and prevents the remaining stages from starting.
+
+The visible capacity cards are direct snapshots of those schedulers. `LATEST DASHBOARD READY` is calculated as `latestDashboardAt - latestSelectionAt` for Jessica on each side, and the percentage advantage is calculated from the measured values. Tests cover equal pool configuration, common stage duration, simultaneous final intent, Promise contention, Observable teardown, no later completion for cancelled workflows, earlier Jessica execution, materially lower latest-dashboard latency, reset/destruction cleanup, monotonic event time, and code disclosure inside Presentation Mode. Current full-suite count: **35 passing tests**.

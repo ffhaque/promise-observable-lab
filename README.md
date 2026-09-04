@@ -15,11 +15,12 @@ Open `http://localhost:4200`.
 
 ## Presentation Deck Mode
 
-Click **Start Presentation** on the landing page to deliver the complete presentation inside the Angular application. The deck has **17 steps** and alternates between concept slides, the six real interactive demos, focused takeaways, the Decision Guide, and final takeaways.
+Click **Start Presentation** on the landing page to deliver the complete presentation inside the Angular application. The deck has **18 steps** and alternates between concept slides, the six real interactive demos, focused takeaways, the Decision Guide, final takeaways, and a clean Questions screen.
 
 - **Next:** Right Arrow or Space
 - **Previous:** Left Arrow
 - **Exit:** Escape or the Exit button
+- **Restart:** Home or the Restart Presentation button on the Questions slide
 - **Fullscreen:** `F` or the Fullscreen button when supported by the browser
 - **Jump to a section:** open the compact menu in the presentation header
 
@@ -27,9 +28,11 @@ A bookmarkable, GitHub Pages-safe entry is available at `?presentation=true`; `&
 
 Live presentation steps reuse the actual Baseline, Search, Rapid Selection, Dashboard, Cleanup, and Sequential Workflow implementations. There is no presentation-only simulation or timing logic. Slides never advance automatically when a demo completes. Exiting or changing slides clears active requests, timers, subscriptions, and queued database work.
 
+Each live-demo step retains the Promise and Observable **View Code** controls. Code starts collapsed to keep the projected comparison focused and can be expanded during the presentation.
+
 The normal six-demo Lab remains available through **Explore Lab**.
 
-Recommended sequence: Title → async shape → Baseline intro/demo → Search intro/demo/takeaway → Rapid Selection intro/demo → Dashboard intro/demo → lifecycle intro/Cleanup demo → Promise comeback/Sequential demo → Decision Guide → Final Takeaways.
+Recommended sequence: Title → async shape → Baseline intro/demo → Search intro/demo/takeaway → Rapid Selection intro/demo → Dashboard intro/demo → lifecycle intro/Cleanup demo → Promise comeback/Sequential demo → Decision Guide → Final Takeaways → Questions.
 
 ## Learning path
 

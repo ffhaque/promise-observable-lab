@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, HostListener, ViewChild, inject } from '@angular/core';
 import { FormsModule, FormControl, ReactiveFormsModule } from '@angular/forms';
-import { Subject, Subscription, combineLatest, concatMap, debounce, distinctUntilChanged, finalize, from, map, of, switchMap, takeUntil, tap, timer } from 'rxjs';
+import { Observable, Subject, Subscription, combineLatest, concatMap, debounce, distinctUntilChanged, finalize, from, map, of, switchMap, takeUntil, tap, timer } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AsyncDemoService } from './core/async-demo.service';
 import { ComparisonRunnerService } from './core/comparison-runner.service';
@@ -11,15 +11,16 @@ import { DatabaseLaneComponent } from './shared/database-lane/database-lane.comp
 import { VerdictBadgeComponent } from './shared/verdict-badge/verdict-badge.component';
 import { ExtendedDemoComponent, ExtendedScenarioId } from './demos/extended-demo/extended-demo.component';
 import { PrimaryResultComponent } from './shared/primary-result/primary-result.component';
+import { SelectionBackendPool, SelectionBackendPoolSnapshot } from './core/selection-backend-pool';
 
 type CoreScenarioId = 'basic' | 'search' | 'selection' | 'dashboard';
 type ScenarioId = CoreScenarioId | ExtendedScenarioId;
 interface Scenario { id: ScenarioId; number: string; name: string; result: string; learning: string[]; verdict: DemoVerdict; }
-type StageStatus = 'waiting' | 'running' | 'completed' | 'cancelled' | 'avoided';
+type StageStatus = 'waiting' | 'queued' | 'running' | 'completed' | 'cancelled' | 'avoided';
 interface WorkflowView { id: number; person: string; status: 'running' | 'completed' | 'cancelled' | 'stale'; startedAt: number; stages: { name: string; status: StageStatus }[]; }
 interface DashboardView { cpu: number; users: number; errors: number; }
 interface PrimaryResultView { label: string; promise: string; observable: string; promiseDetail: string; observableDetail: string; comparison: string; note: string; }
-type PresentationStepType = 'title' | 'concept' | 'intro' | 'demo' | 'takeaway' | 'guide' | 'final';
+type PresentationStepType = 'title' | 'concept' | 'intro' | 'demo' | 'takeaway' | 'guide' | 'final' | 'questions';
 interface PresentationStep { id: string; type: PresentationStepType; title: string; section: string; scenarioId?: ScenarioId; }
 
 @Component({
@@ -40,7 +41,7 @@ export class AppComponent {
   readonly scenarios: Scenario[] = [
     { id: 'basic', number: '01', name: 'Baseline Request', verdict: 'tie', result: 'BOTH ARE GOOD', learning: ['Equivalent one-shot work completes in equivalent time.', 'Observable does not make a one-shot operation intrinsically faster.', 'Choose the clearest API for the surrounding code.'] },
     { id: 'search', number: '02', name: 'Search Under Load', verdict: 'observable', result: 'OBSERVABLE ADVANTAGE', learning: ['Promise request IDs protect the UI, but obsolete queries still occupy the constrained database lane.', 'switchMap teardown removes obsolete work from the real scheduler.', 'The latest query is not executed faster; it receives capacity earlier.'] },
-    { id: 'selection', number: '03', name: 'Rapid Selection Workflow', verdict: 'observable', result: 'OBSERVABLE ADVANTAGE', learning: ['Both latest workflows take approximately the same time.', 'Old Promise workflows keep executing after context changes.', 'switchMap tears down the active stage and avoids the remaining obsolete stages.'] },
+    { id: 'selection', number: '03', name: 'Rapid Selection Workflow', verdict: 'observable', result: 'OBSERVABLE ADVANTAGE', learning: ['Both sides have the same two-slot backend capacity and identical stage durations.', 'Old Promise workflows keep consuming or queueing for backend capacity.', 'switchMap teardown releases obsolete capacity so Jessica becomes ready sooner.'] },
     { id: 'dashboard', number: '04', name: 'Live Dashboard', verdict: 'different-shape', result: 'DIFFERENT PROBLEM SHAPE', learning: ['Promise.all creates one point-in-time snapshot.', 'combineLatest maintains a view as continuing sources change.', 'This is a difference in async shape, not a speed race.'] },
     { id: 'lifecycle', number: '05', name: 'Component Cleanup', verdict: 'observable', result: 'OBSERVABLE ADVANTAGE', learning: [] },
     { id: 'sequential', number: '06', name: 'Sequential Workflow', verdict: 'promise', result: 'PROMISE ADVANTAGE', learning: [] }
@@ -62,6 +63,11 @@ export class AppComponent {
   observableDashboard?: DashboardView;
   observableDashboardHistory: DashboardView[] = [];
   snapshotAge = 0;
+  readonly selectionPoolCapacity = 2;
+  readonly selectionStageDurationMs = 600;
+  readonly selectionCadenceMs = 450;
+  promiseSelectionPoolSnapshot: SelectionBackendPoolSnapshot = { side: 'promise', capacity: 2, active: [], queued: [], cancelled: [] };
+  observableSelectionPoolSnapshot: SelectionBackendPoolSnapshot = { side: 'observable', capacity: 2, active: [], queued: [], cancelled: [] };
 
   private requestId = 0;
   private promiseLatest = 0;
@@ -75,6 +81,8 @@ export class AppComponent {
   private promiseSelectionLatest = 0;
   private workflowId = 0;
   private readonly workflowStages = ['Load User', 'Load Team', 'Load Projects', 'Load Permissions', 'Build Dashboard'];
+  private readonly promiseSelectionPool: SelectionBackendPool;
+  private readonly observableSelectionPool: SelectionBackendPool;
   readonly presentationSteps: readonly PresentationStep[] = [
     { id: 'title', type: 'title', title: 'Promise vs Observable', section: 'Title' },
     { id: 'question', type: 'concept', title: 'Why does Angular use Observables so heavily?', section: 'Title' },
@@ -92,12 +100,15 @@ export class AppComponent {
     { id: 'promise-comeback', type: 'concept', title: 'So should everything be an Observable?', section: 'Sequential Workflow', scenarioId: 'sequential' },
     { id: 'sequential-demo', type: 'demo', title: 'Sequential Workflow', section: 'Sequential Workflow', scenarioId: 'sequential' },
     { id: 'decision-guide', type: 'guide', title: 'What shape is your async work?', section: 'Decision Guide' },
-    { id: 'final', type: 'final', title: 'Promise vs Observable', section: 'Final Takeaways' }
+    { id: 'final', type: 'final', title: 'Promise vs Observable', section: 'Final Takeaways' },
+    { id: 'questions', type: 'questions', title: 'Questions?', section: 'Questions' }
   ];
   promiseLane: DatabaseLaneSnapshot = { queued: [], cancelled: [] };
   observableLane: DatabaseLaneSnapshot = { queued: [], cancelled: [] };
 
   constructor() {
+    this.promiseSelectionPool = new SelectionBackendPool('promise', this.selectionPoolCapacity, (snapshot) => { this.promiseSelectionPoolSnapshot = snapshot; this.cdr.markForCheck(); });
+    this.observableSelectionPool = new SelectionBackendPool('observable', this.selectionPoolCapacity, (snapshot) => { this.observableSelectionPoolSnapshot = snapshot; this.cdr.markForCheck(); });
     this.bindSearchPipeline();
     this.bindSelectionPipeline();
     this.database.laneChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
@@ -129,7 +140,7 @@ export class AppComponent {
     return ({
       basic: 'Compare cleanup and readability. Runtime should be equal.',
       search: 'Watch the lanes: obsolete Promise queries queue; switchMap removes obsolete Observable work.',
-      selection: 'Watch entire five-stage workflows continue or disappear when selection context changes.',
+      selection: 'Watch obsolete Promise stages consume the two-slot pool while switchMap releases Observable capacity for Jessica.',
       dashboard: 'Watch snapshot age increase while three live sources keep the Observable view synchronized.'
     } satisfies Record<CoreScenarioId, string>)[this.activeId as CoreScenarioId];
   }
@@ -141,7 +152,7 @@ export class AppComponent {
   get primaryResult(): PrimaryResultView {
     switch (this.activeId as CoreScenarioId) {
       case 'search': return { label: 'LATEST USEFUL RESULT', promise: this.duration(this.promiseState.metrics.latestLatency), observable: this.duration(this.observableState.metrics.latestLatency), promiseDetail: this.promiseState.metrics.latestLatency ? `${this.promiseState.metrics.stale} obsolete queries completed` : `${this.promiseLane.queued.length} queries queued`, observableDetail: `${this.observableState.metrics.cancelled} obsolete queries cancelled`, comparison: this.searchGain ? `Observable useful result arrived ${this.searchGain}% sooner` : '', note: 'Observable did not execute the same query faster. switchMap cancelled obsolete work, releasing constrained capacity for the newest useful request.' };
-      case 'selection': return { label: 'OBSOLETE STAGES EXECUTED', promise: `${this.obsoleteStagesExecuted('promise')}`, observable: `${this.obsoleteStagesExecuted('observable')}`, promiseDetail: 'stages completed after context changed', observableDetail: 'obsolete stages allowed to complete', comparison: this.workflowStagesAvoided('observable') ? `${this.workflowStagesAvoided('observable')} obsolete stages avoided by switchMap` : '', note: 'switchMap can replace an entire obsolete workflow, not just a search request. Latest-workflow timing remains approximately equal.' };
+      case 'selection': return { label: 'LATEST DASHBOARD READY', promise: this.duration(this.promiseState.metrics.latestLatency), observable: this.duration(this.observableState.metrics.latestLatency), promiseDetail: `${this.obsoleteStagesExecuted('promise')} obsolete stages executed`, observableDetail: `${this.observableState.metrics.rowsAvoided} backend stage units avoided`, comparison: this.selectionGain ? `Observable useful dashboard arrived ${this.selectionGain}% sooner` : '', note: "Observable did not make Jessica's individual stages execute faster. switchMap released limited backend capacity by cancelling workflows that no longer mattered." };
       case 'dashboard': return { label: 'DELIVERY SHAPE', promise: this.promiseDashboard ? 'SNAPSHOT ✓' : '—', observable: this.observableState.loading ? 'LIVE ●' : this.observableDashboard ? 'STOPPED' : '—', promiseDetail: this.promiseDashboard ? `captured ${this.snapshotAge} seconds ago` : 'point-in-time aggregate', observableDetail: `${this.observableState.metrics.completed} synchronized updates`, comparison: 'Different problem shape — not a speed race', note: 'Promise.all creates a one-time snapshot. combineLatest maintains a view from sources that continue changing.' };
       default: return { label: 'ONE REQUEST · ONE RESULT', promise: this.duration(this.promiseState.metrics.latestLatency), observable: this.duration(this.observableState.metrics.latestLatency), promiseDetail: this.promiseState.result ? '✓ User loaded' : 'async / await', observableDetail: this.observableState.result ? '✓ User loaded' : 'cold stream', comparison: this.promiseState.metrics.latestLatency && this.observableState.metrics.latestLatency ? 'BOTH ARE GOOD' : '', note: 'Same one-shot work. Approximately the same runtime. Observable is not intrinsically faster.' };
     }
@@ -183,6 +194,7 @@ export class AppComponent {
     if (event.key === 'ArrowRight') { event.preventDefault(); this.nextPresentationSlide(); return; }
     if (event.key === 'ArrowLeft') { event.preventDefault(); this.previousPresentationSlide(); return; }
     if (event.key === ' ' && !this.isInteractiveTarget(event.target)) { event.preventDefault(); this.nextPresentationSlide(); return; }
+    if (event.key === 'Home') { event.preventDefault(); this.startPresentation(); return; }
     if (event.key.toLowerCase() === 'f' && document.fullscreenEnabled) { event.preventDefault(); void this.toggleFullscreen(); }
   }
 
@@ -280,12 +292,16 @@ export class AppComponent {
   autoSelect(resetFirst = true): void {
     if (resetFirst) { this.reset(); this.activeId = 'selection'; this.sharedRun = true; this.clock.restartClock(); }
     this.people.forEach((person, index) => {
-      const handle = window.setTimeout(() => { this.log(this.promiseState, 'info', `Selected ${person}`); this.log(this.observableState, 'info', `selectedUser$ → ${person}`); this.selectPerson(person); this.cdr.markForCheck(); }, this.clock.scale(index * 480));
+      const handle = window.setTimeout(() => { this.log(this.promiseState, 'info', `Selected ${person}`); this.log(this.observableState, 'info', `selectedUser$ → ${person}`); this.selectPerson(person); this.cdr.markForCheck(); }, this.clock.scale(index * this.selectionCadenceMs));
       this.autoTypeTimers.push(handle);
     });
   }
 
   get searchGain(): number {
+    const promise = this.promiseState.metrics.latestLatency; const observable = this.observableState.metrics.latestLatency;
+    return promise > 0 && observable > 0 ? Math.max(0, Math.round((promise - observable) / promise * 1000) / 10) : 0;
+  }
+  get selectionGain(): number {
     const promise = this.promiseState.metrics.latestLatency; const observable = this.observableState.metrics.latestLatency;
     return promise > 0 && observable > 0 ? Math.max(0, Math.round((promise - observable) / promise * 1000) / 10) : 0;
   }
@@ -306,18 +322,23 @@ export class AppComponent {
   }
 
   private async runPromiseWorkflow(person: string): Promise<void> {
-    const s = this.promiseState; const version = ++this.promiseSelectionLatest; const id = ++this.requestId; const workflow = this.createWorkflow('promise', person); const controller = new AbortController(); this.promiseControllers.add(controller);
+    const s = this.promiseState; const version = ++this.promiseSelectionLatest; const id = ++this.requestId; const workflow = this.createWorkflow('promise', person);
     this.begin(s, `${person} workflow started`, id, `${person} · 5 stages`);
     try {
       for (let index = 0; index < workflow.stages.length; index++) {
-        workflow.stages[index]!.status = 'running'; this.cdr.markForCheck();
-        await this.api.delay(null, 480, controller.signal);
-        workflow.stages[index]!.status = 'completed'; s.metrics.emitted++; this.log(s, 'emit', `${person} · ${workflow.stages[index]!.name} complete`, id);
+        const stage = workflow.stages[index]!;
+        const task = this.promiseSelectionPool.enqueue(workflow.id, person, stage.name, this.clock.scale(this.selectionStageDurationMs), {
+          queued: () => { stage.status = 'queued'; this.log(s, 'queue', `${person} · ${stage.name} queued for backend capacity`, id); },
+          executing: () => { stage.status = 'running'; this.log(s, 'execute', `${person} · ${stage.name} executing · backend slot acquired`, id); },
+          completed: () => this.cdr.markForCheck()
+        });
+        await task.completed;
+        workflow.stages[index]!.status = 'completed'; s.metrics.emitted++; s.metrics.rowsScanned++; this.log(s, 'emit', `${person} · ${workflow.stages[index]!.name} complete`, id);
       }
-      if (version === this.promiseSelectionLatest) { workflow.status = 'completed'; s.result = `${person} dashboard ready`; s.metrics.latestResultAt = this.clock.now(); s.metrics.latestLatency = performance.now() - workflow.startedAt; this.complete(s, `${person} dashboard accepted`, id); }
+      if (version === this.promiseSelectionLatest) { workflow.status = 'completed'; s.result = `${person} dashboard ready`; s.metrics.latestResultAt = this.clock.now(); s.metrics.latestLatency = s.metrics.latestResultAt - s.metrics.latestIntentAt; this.complete(s, `${person} dashboard accepted`, id); }
       else { workflow.status = 'stale'; s.metrics.stale++; s.metrics.completed++; s.metrics.active--; this.setRequest(s, id, 'stale'); this.log(s, 'ignore', `${person} dashboard ignored · selection changed`, id); }
     } catch (error) { if ((error as DOMException).name === 'AbortError') this.cancelled(s, id, `${person} workflow aborted during reset`); else this.fail(s, `${person} workflow failed`, id); }
-    finally { this.promiseControllers.delete(controller); s.loading = s.metrics.active > 0; this.cdr.markForCheck(); }
+    finally { s.loading = s.metrics.active > 0; this.cdr.markForCheck(); }
   }
 
   private bindSelectionPipeline(): void {
@@ -325,22 +346,45 @@ export class AppComponent {
       const s = this.observableState; const id = ++this.requestId; const workflow = this.createWorkflow('observable', person); let completed = false;
       this.begin(s, `${person} workflow subscribed`, id, `${person} · switchMap workflow`);
       return from(workflow.stages.map((_, index) => index)).pipe(
-        concatMap((index) => { workflow.stages[index]!.status = 'running'; this.cdr.markForCheck(); return this.api.observableDelay(index, 480); }),
+        concatMap((index) => this.runObservableSelectionStage(workflow, index, id)),
         tap((index) => {
-          workflow.stages[index]!.status = 'completed'; s.metrics.emitted++; this.log(s, 'emit', `${person} · ${workflow.stages[index]!.name} complete`, id);
-          if (index === workflow.stages.length - 1) { completed = true; workflow.status = 'completed'; s.result = `${person} dashboard ready`; s.metrics.latestResultAt = this.clock.now(); s.metrics.latestLatency = performance.now() - workflow.startedAt; this.complete(s, `${person} dashboard accepted`, id); }
+          workflow.stages[index]!.status = 'completed'; s.metrics.emitted++; s.metrics.rowsScanned++; this.log(s, 'emit', `${person} · ${workflow.stages[index]!.name} complete`, id);
+          if (index === workflow.stages.length - 1) { completed = true; workflow.status = 'completed'; s.result = `${person} dashboard ready`; s.metrics.latestResultAt = this.clock.now(); s.metrics.latestLatency = s.metrics.latestResultAt - s.metrics.latestIntentAt; this.complete(s, `${person} dashboard accepted`, id); }
           this.cdr.markForCheck();
         }),
         takeUntil(this.selectionCancel),
         finalize(() => {
           if (!completed) {
-            workflow.status = 'cancelled'; workflow.stages.forEach((stage) => { if (stage.status === 'running') stage.status = 'cancelled'; else if (stage.status === 'waiting') stage.status = 'avoided'; });
+            s.metrics.rowsAvoided += workflow.stages.filter((stage) => stage.status !== 'completed').length;
+            workflow.status = 'cancelled'; workflow.stages.forEach((stage) => { if (stage.status === 'running' || stage.status === 'queued') stage.status = 'cancelled'; else if (stage.status === 'waiting') stage.status = 'avoided'; });
             s.metrics.cancelled++; s.metrics.active = Math.max(0, s.metrics.active - 1); this.setRequest(s, id, 'cancelled'); this.log(s, 'cancel', `${person} entire workflow disposed by switchMap`, id);
           }
           s.loading = s.metrics.active > 0; this.cdr.markForCheck();
         })
       );
     }), takeUntilDestroyed(this.destroyRef)).subscribe();
+  }
+
+  private runObservableSelectionStage(workflow: WorkflowView, index: number, requestId: number): Observable<number> {
+    const state = this.observableState;
+    const stage = workflow.stages[index]!;
+    return new Observable<number>((subscriber) => {
+      const task = this.observableSelectionPool.enqueue(workflow.id, workflow.person, stage.name, this.clock.scale(this.selectionStageDurationMs), {
+        queued: () => { stage.status = 'queued'; this.log(state, 'queue', `${workflow.person} · ${stage.name} queued for backend capacity`, requestId); },
+        executing: () => { stage.status = 'running'; this.log(state, 'execute', `${workflow.person} · ${stage.name} executing · backend slot acquired`, requestId); },
+        cancelled: (location) => {
+          stage.status = 'cancelled';
+          this.log(state, 'teardown', `${workflow.person} · ${stage.name} removed from ${location} backend work · slot released`, requestId);
+          this.cdr.markForCheck();
+        }
+      });
+      task.completed.then(() => {
+        if (!subscriber.closed) { subscriber.next(index); subscriber.complete(); }
+      }).catch((error: unknown) => {
+        if (!subscriber.closed && (error as DOMException).name !== 'AbortError') subscriber.error(error);
+      });
+      return () => task.cancel();
+    });
   }
 
   private async runPromiseDashboard(): Promise<void> {
@@ -443,7 +487,7 @@ export class AppComponent {
     this.observableState.metrics.latestIntentAt = intentAt;
   }
   private resetSide(side: Side): void { if (side === 'promise') { this.database.cancel('promise'); this.promiseControllers.forEach((c) => c.abort()); this.promiseControllers.clear(); this.promiseState = emptyState(); } else { this.database.cancel('observable'); this.selectionCancel.next(); this.observableSub?.unsubscribe(); this.observableState = emptyState(); } }
-  private cleanup(): void { this.searchCancel.next(); this.selectionCancel.next(); this.database.cancelAll(); this.promiseControllers.forEach((controller) => controller.abort()); this.promiseControllers.clear(); this.observableSub?.unsubscribe(); this.observableSub = undefined; this.autoTypeTimers.forEach((timer) => window.clearTimeout(timer)); this.autoTypeTimers = []; }
+  private cleanup(): void { this.searchCancel.next(); this.selectionCancel.next(); this.database.cancelAll(); this.promiseSelectionPool.reset(); this.observableSelectionPool.reset(); this.promiseControllers.forEach((controller) => controller.abort()); this.promiseControllers.clear(); this.observableSub?.unsubscribe(); this.observableSub = undefined; this.autoTypeTimers.forEach((timer) => window.clearTimeout(timer)); this.autoTypeTimers = []; }
 
   private stopActiveWork(): void {
     this.reset();
@@ -473,14 +517,14 @@ export class AppComponent {
   private readonly descriptions: Record<CoreScenarioId, Record<Side, string>> = {
     basic: { promise: 'async/await resolves one user and clears loading in finally.', observable: 'A cold Observable emits the same user and clears loading in finalize.' },
     search: { promise: 'Obsolete JOINs stay active or queued; version IDs only protect the UI.', observable: 'switchMap removes obsolete JOINs so the useful query receives the lane.' },
-    selection: { promise: 'Each async/await workflow continues; a version ID ignores stale dashboards.', observable: 'switchMap disposes the whole previous five-stage workflow.' },
+    selection: { promise: 'Each async/await workflow continues through the same two-slot backend pool; a version ID only protects the UI.', observable: 'switchMap teardown removes obsolete work from an equivalent pool so the current workflow receives capacity sooner.' },
     dashboard: { promise: 'Promise.all captures one coherent three-source snapshot.', observable: 'combineLatest keeps a live view synchronized as each source changes.' }
   };
 
   private readonly codes: Record<CoreScenarioId, Record<Side, string>> = {
     basic: { promise: `loading = true;\ntry {\n  user = await getUser();\n} finally {\n  loading = false;\n}`, observable: `getUser$().pipe(\n  finalize(() => loading = false)\n).subscribe(user => this.user = user);` },
     search: { promise: `const requestId = ++this.requestId;\n\n// Older Promise queries continue in parallel.\nconst hugeDataset = await databaseSearch(term);\n\nif (requestId === this.latestRequestId) {\n  this.result = hugeDataset;\n} else {\n  // Protects the UI, but the DB work already finished.\n  this.staleResultsIgnored++;\n}`, observable: `searchControl.valueChanges.pipe(\n  debounceTime(220),\n  distinctUntilChanged(),\n  switchMap(term => databaseSearch$(term))\n  // Unsubscription tears down the obsolete query.\n).subscribe(dataset => this.result = dataset);` },
-    selection: { promise: `const version = ++latestVersion;\nconst user = await loadUser(id);\nconst team = await loadTeam(user);\nconst projects = await loadProjects(team);\nconst permissions = await loadPermissions(user);\nconst dashboard = await buildDashboard(...);\nif (version === latestVersion) show(dashboard);`, observable: `selectedUser$.pipe(\n  switchMap(id => loadUser$(id).pipe(\n    concatMap(loadTeam$),\n    concatMap(loadProjects$),\n    concatMap(loadPermissions$),\n    concatMap(buildDashboard$)\n  ))\n).subscribe(show);` },
+    selection: { promise: `const version = ++latestVersion;\nconst user = await backendPool.run(() => loadUser(id));\nconst team = await backendPool.run(() => loadTeam(user));\nconst projects = await backendPool.run(() => loadProjects(team));\nconst permissions = await backendPool.run(() => loadPermissions(user));\nconst dashboard = await backendPool.run(() => buildDashboard(...));\nif (version === latestVersion) show(dashboard);`, observable: `selectedUser$.pipe(\n  switchMap(id => loadUser$(id).pipe(\n    concatMap(loadTeam$),\n    concatMap(loadProjects$),\n    concatMap(loadPermissions$),\n    concatMap(buildDashboard$)\n  ))\n  // teardown removes active/queued pool work\n).subscribe(show);` },
     dashboard: { promise: `const snapshot = await Promise.all([\n  getCpu(), getUsers(), getErrorRate()\n]);\n// One coherent point-in-time result`, observable: `combineLatest([cpu$, users$, errors$]).pipe(\n  map(([cpu, users, errors]) => ({\n    cpu, users, errors\n  }))\n).subscribe(renderLiveDashboard);` }
   };
 }

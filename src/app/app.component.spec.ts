@@ -76,13 +76,56 @@ describe('AppComponent focused presentation and timing semantics', () => {
     expect(app.observableLane.queued).toEqual([]); expect(app.observableLane.active).toBeUndefined();
   });
 
-  it('shows rapid selection as work avoided without manufacturing a speed win', async () => {
+  it('uses equal constrained pools so switchMap releases capacity for the latest selection', async () => {
     const app = TestBed.createComponent(AppComponent).componentInstance;
-    app.selectScenario('selection'); app.runBoth(); await Promise.resolve(); await vi.advanceTimersByTimeAsync(4_500);
+    app.selectScenario('selection'); app.runBoth(); await Promise.resolve();
+    expect(app.promiseSelectionPoolSnapshot.capacity).toBe(app.observableSelectionPoolSnapshot.capacity);
+    expect(app.selectionPoolCapacity).toBe(2);
+    expect(app.selectionStageDurationMs).toBeGreaterThan(app.selectionCadenceMs);
+
+    await vi.advanceTimersByTimeAsync(1_900);
+    expect(app.promiseState.metrics.latestIntentAt).toBe(app.observableState.metrics.latestIntentAt);
+    expect(app.promiseSelectionPoolSnapshot.active).toHaveLength(2);
+    expect(app.promiseSelectionPoolSnapshot.queued.some((task) => task.person === 'Jessica')).toBe(true);
+    expect(app.observableSelectionPoolSnapshot.active).toHaveLength(1);
+    expect(app.observableSelectionPoolSnapshot.active[0]?.person).toBe('Jessica');
+    expect(app.observableSelectionPoolSnapshot.queued).toEqual([]);
+    expect(app.observableState.metrics.cancelled).toBe(4);
+
+    const cancelledIds = new Set(app.observableState.events.filter((event) => event.type === 'cancel').map((event) => event.requestId));
+    await vi.advanceTimersByTimeAsync(8_500);
     expect(app.promiseState.metrics.stale).toBe(4); expect(app.observableState.metrics.cancelled).toBe(4);
-    expect(app.workflowWasted('promise')).toBe(20); expect(app.workflowStagesAvoided('observable')).toBeGreaterThanOrEqual(16);
-    expect(Math.abs(app.promiseState.metrics.latestLatency - app.observableState.metrics.latestLatency)).toBeLessThan(20);
+    expect(app.workflowWasted('promise')).toBe(20); expect(app.workflowStagesAvoided('observable')).toBe(16);
+    expect(app.observableState.metrics.rowsAvoided).toBe(20); expect(app.observableState.metrics.rowsScanned).toBe(5);
+    expect(app.observableState.events.filter((event) => event.type === 'complete' && cancelledIds.has(event.requestId))).toEqual([]);
+    const promiseJessicaStart = app.promiseState.events.find((event) => event.type === 'execute' && event.message.includes('Jessica · Load User'))!;
+    const observableJessicaStart = app.observableState.events.find((event) => event.type === 'execute' && event.message.includes('Jessica · Load User'))!;
+    expect(observableJessicaStart.timestampMs).toBeLessThan(promiseJessicaStart.timestampMs);
+    expect(app.promiseState.metrics.latestLatency).toBeCloseTo(app.promiseState.metrics.latestResultAt - app.promiseState.metrics.latestIntentAt, 5);
+    expect(app.observableState.metrics.latestLatency).toBeCloseTo(app.observableState.metrics.latestResultAt - app.observableState.metrics.latestIntentAt, 5);
+    expect(app.observableState.metrics.latestLatency).toBeLessThan(app.promiseState.metrics.latestLatency * 0.7);
+    expect(app.selectionGain).toBeGreaterThan(30);
     expect(app.observableState.events.filter((event) => event.type === 'cancel').every((event) => event.timestampMs < app.observableState.metrics.latestResultAt)).toBe(true);
+    expect(times(app.promiseState.events)).toEqual([...times(app.promiseState.events)].sort((a, b) => a - b));
+    expect(times(app.observableState.events)).toEqual([...times(app.observableState.events)].sort((a, b) => a - b));
+  });
+
+  it('removes Rapid Selection backend work on teardown and reset', async () => {
+    const app = TestBed.createComponent(AppComponent).componentInstance;
+    app.selectScenario('selection'); app.runBoth(); await Promise.resolve(); await vi.advanceTimersByTimeAsync(1_000);
+    expect(app.promiseSelectionPoolSnapshot.active.length + app.promiseSelectionPoolSnapshot.queued.length).toBeGreaterThan(0);
+    expect(app.observableState.events.some((event) => event.type === 'teardown' && event.message.includes('slot released'))).toBe(true);
+    app.reset(); await Promise.resolve(); await vi.runAllTimersAsync();
+    expect(app.promiseSelectionPoolSnapshot.active).toEqual([]); expect(app.promiseSelectionPoolSnapshot.queued).toEqual([]);
+    expect(app.observableSelectionPoolSnapshot.active).toEqual([]); expect(app.observableSelectionPoolSnapshot.queued).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('leaves no Rapid Selection pool timers when the component is destroyed', async () => {
+    const fixture = TestBed.createComponent(AppComponent); const app = fixture.componentInstance;
+    app.selectScenario('selection'); app.runBoth(); await Promise.resolve(); await vi.advanceTimersByTimeAsync(1_000);
+    fixture.destroy(); await vi.runAllTimersAsync();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('models Live Dashboard as snapshot versus continuing values, not a speed race', async () => {

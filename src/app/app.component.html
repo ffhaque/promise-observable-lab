@@ -4,12 +4,12 @@
       <button type="button" class="deck-menu-button" aria-label="Open presentation menu" [attr.aria-expanded]="presentationMenuOpen" (click)="togglePresentationMenu()">☰</button>
       <span class="deck-brand">PROMISE <i>VS</i> OBSERVABLE</span>
       <nav aria-label="Presentation controls">
-        <button type="button" (click)="previousPresentationSlide()" [disabled]="activeSlide === 0">← PREVIOUS</button>
+        <button type="button" class="deck-previous" (click)="previousPresentationSlide()" [disabled]="activeSlide === 0">← PREVIOUS</button>
         <strong>{{ activeSlide + 1 }} / {{ presentationSteps.length }}</strong>
-        <button type="button" (click)="nextPresentationSlide()" [disabled]="activeSlide === presentationSteps.length - 1">NEXT →</button>
+        @if (activeSlide < presentationSteps.length - 1) { <button type="button" class="deck-next" (click)="nextPresentationSlide()">NEXT →</button> }
       </nav>
       <div class="deck-actions">
-        <button type="button" (click)="toggleFullscreen()" [disabled]="!fullscreenAvailable">FULLSCREEN</button>
+        @if (presentationStep.id !== 'questions') { <button type="button" (click)="toggleFullscreen()" [disabled]="!fullscreenAvailable">FULLSCREEN</button> }
         <button type="button" class="deck-exit" (click)="exitPresentation()">EXIT</button>
       </div>
       <span class="deck-progress" [style.width.%]="presentationProgress"></span>
@@ -124,6 +124,21 @@
             <p>Observable is not inherently faster. <b>It becomes powerful when time is part of the problem.</b></p>
           </section>
         }
+        @case ('questions') {
+          <section class="deck-slide questions-slide">
+            <span class="deck-kicker">THANKS FOR LISTENING!</span>
+            <h1>Questions?</h1>
+            <h2>Promise <i>•</i> Observable <i>•</i> RxJS <i>•</i> Angular — let's discuss.</h2>
+            <div class="questions-links">
+              <a href="https://ffhaque.github.io/promise-observable-lab/" target="_blank" rel="noopener noreferrer"><span>TRY THE LIVE DEMO</span>ffhaque.github.io/promise-observable-lab</a>
+              <a href="https://github.com/ffhaque/promise-observable-lab" target="_blank" rel="noopener noreferrer"><span>SOURCE CODE</span>github.com/ffhaque/promise-observable-lab</a>
+            </div>
+            <div class="questions-actions">
+              <button type="button" (click)="goToPresentationSlide(15)">← RETURN TO DECISION GUIDE</button>
+              <button type="button" class="deck-primary restart-presentation" (click)="startPresentation()">↺ RESTART PRESENTATION</button>
+            </div>
+          </section>
+        }
       }
     </main>
   }
@@ -209,6 +224,14 @@
       @if (sharedRun) { <div class="shared-clock"><i></i> SYNCHRONIZED COMPARISON CLOCK ACTIVE · ONE SHARED EPOCH</div> }
 
       <app-primary-result [label]="primaryResult.label" [promiseValue]="primaryResult.promise" [observableValue]="primaryResult.observable" [promiseDetail]="primaryResult.promiseDetail" [observableDetail]="primaryResult.observableDetail" [comparison]="primaryResult.comparison" [note]="primaryResult.note" />
+      @if (activeId === 'selection') {
+        <div class="selection-metrics" aria-label="Rapid Selection comparison metrics">
+          <div><span>OBSOLETE STAGES EXECUTED</span><b>{{ obsoleteStagesExecuted('promise') }}</b><strong>{{ obsoleteStagesExecuted('observable') }}</strong></div>
+          <div><span>WORK AVOIDED</span><b>0</b><strong>{{ observableState.metrics.rowsAvoided }}</strong></div>
+          <div><span>BACKEND WORK UNITS</span><b>{{ promiseState.metrics.rowsScanned }}</b><strong>{{ observableState.metrics.rowsScanned }}</strong></div>
+        </div>
+        <div class="accuracy-callout selection-explanation"><b>WHY?</b><span><strong>switchMap</strong> cancelled workflows that no longer mattered. Because those workflows were consuming limited backend capacity, Jessica received that capacity sooner. A Promise workflow can provide similar cancellation by explicitly propagating AbortController through every stage.</span></div>
+      }
       @if (isSearch && (promiseState.metrics.started || observableState.metrics.started)) {
         <div class="accuracy-callout"><b>WHY?</b><span>The Observable did not execute the same JOIN faster. <strong>switchMap</strong> cancelled obsolete work, releasing constrained capacity for the newest useful query.</span></div>
       }
@@ -217,6 +240,11 @@
         <div class="side-stack">
           @if (isSearch) { <app-database-lane side="promise" [snapshot]="promiseLane" /> }
           @if (activeId === 'selection') {
+            <section class="selection-pool promise-pool" aria-label="Promise backend pool">
+              <header><span>PROMISE BACKEND POOL</span><b>CAPACITY {{ promiseSelectionPoolSnapshot.active.length }} / {{ promiseSelectionPoolSnapshot.capacity }}</b></header>
+              <div class="pool-group"><strong>ACTIVE</strong>@for (task of promiseSelectionPoolSnapshot.active; track task.id) { <span>{{ task.person }} · {{ task.stage }}</span> } @if (!promiseSelectionPoolSnapshot.active.length) { <em>NO ACTIVE WORK</em> }</div>
+              <div class="pool-group"><strong>QUEUE</strong>@for (task of promiseSelectionPoolSnapshot.queued; track task.id) { <span [class.latest-task]="task.person === 'Jessica'">{{ task.person }} · {{ task.stage }}</span> } @if (!promiseSelectionPoolSnapshot.queued.length) { <em>QUEUE EMPTY</em> }</div>
+            </section>
             <section class="workflow-board promise-board"><header>OLD CONTEXT · WORK STILL RUNNING <b>{{ obsoleteStagesExecuted('promise') }} OBSOLETE STAGES EXECUTED</b></header>
               @for (flow of promiseWorkflows; track flow.id) { <div class="workflow" [class]="'workflow ' + flow.status" [class.latest]="isLatestWorkflow('promise', flow.id)"><strong>{{ flow.person }} @if (isLatestWorkflow('promise', flow.id)) { <small>LATEST SELECTION</small> }</strong><div>@for (stage of flow.stages; track stage.name) { <span [class]="stage.status">{{ stage.name }} <i>{{ stage.status }}</i></span> }</div></div> }
             </section>
@@ -234,6 +262,11 @@
         <div class="side-stack">
           @if (isSearch) { <app-database-lane side="observable" [snapshot]="observableLane" /> }
           @if (activeId === 'selection') {
+            <section class="selection-pool observable-pool" aria-label="Observable backend pool">
+              <header><span>OBSERVABLE BACKEND POOL</span><b>CAPACITY {{ observableSelectionPoolSnapshot.active.length }} / {{ observableSelectionPoolSnapshot.capacity }}</b></header>
+              <div class="pool-group"><strong>ACTIVE</strong>@for (task of observableSelectionPoolSnapshot.active; track task.id) { <span class="latest-task">{{ task.person }} · {{ task.stage }}</span> } @if (!observableSelectionPoolSnapshot.active.length) { <em>NO ACTIVE WORK</em> }</div>
+              <div class="pool-group cancelled-work"><strong>CANCELLED</strong>@for (task of observableSelectionPoolSnapshot.cancelled; track task.id) { <span>{{ task.person }} · {{ task.stage }}</span> } @if (!observableSelectionPoolSnapshot.cancelled.length) { <em>NONE YET</em> }</div>
+            </section>
             <section class="workflow-board observable-board"><header>SWITCHMAP WORKFLOW LIFECYCLE <b>{{ workflowStagesAvoided('observable') }} STAGES AVOIDED</b></header>
               @for (flow of observableWorkflows; track flow.id) { <div class="workflow" [class]="'workflow ' + flow.status" [class.latest]="isLatestWorkflow('observable', flow.id)"><strong>{{ flow.person }} @if (isLatestWorkflow('observable', flow.id)) { <small>LATEST SELECTION</small> }</strong><div>@for (stage of flow.stages; track stage.name) { <span [class]="stage.status">{{ stage.name }} <i>{{ stage.status }}</i></span> }</div></div> }
             </section>
@@ -251,7 +284,7 @@
       </div>
 
       <aside class="learning">
-        <div class="learn-title"><span>WHAT DID WE LEARN?</span><strong>{{ scenario.result }}</strong><app-verdict-badge [verdict]="scenario.verdict" /></div>
+        <div class="learn-title"><span>WHAT DID WE LEARN?</span><strong>{{ scenario.result }}</strong></div>
         <ul>@for (point of scenario.learning; track point) { <li><i>✓</i>{{ point }}</li> }</ul>
       </aside>
     </section>

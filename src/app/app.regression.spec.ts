@@ -8,7 +8,7 @@ interface RegressionCase { id: string; name: string; wait: number; extended?: bo
 const cases: RegressionCase[] = [
   { id: 'basic', name: 'Baseline Request', wait: 2_100 },
   { id: 'search', name: 'Search Under Load', wait: 10_500 },
-  { id: 'selection', name: 'Rapid Selection Workflow', wait: 4_500 },
+  { id: 'selection', name: 'Rapid Selection Workflow', wait: 10_500 },
   { id: 'dashboard', name: 'Live Dashboard', wait: 5_100 },
   { id: 'lifecycle', name: 'Component Cleanup', wait: 5_100, extended: true },
   { id: 'sequential', name: 'Sequential Workflow', wait: 2_150, extended: true }
@@ -43,15 +43,16 @@ describe('Full six-scenario application regression', () => {
     expect(host.querySelectorAll('.workspace > .master-controls .run-observable')).toHaveLength(1);
     expect(host.querySelectorAll('.comparison-grid .panel-actions')).toHaveLength(0);
     expect(host.querySelectorAll('.comparison-grid .code-toggle')).toHaveLength(2);
+    expect(host.querySelectorAll('.learning app-verdict-badge')).toHaveLength(0);
   });
 
-  it('starts the complete 17-step presentation deck from the landing page', () => {
+  it('starts the complete 18-step presentation deck from the landing page', () => {
     const host = fixture.nativeElement as HTMLElement;
     host.querySelector<HTMLButtonElement>('.hero-actions .deck-primary')!.click(); fixture.detectChanges();
     expect(host.querySelector('.app')?.classList.contains('presentation')).toBe(true);
     expect(host.querySelector('.deck-stage')?.getAttribute('data-slide')).toBe('title');
     expect(host.querySelector('.title-slide')?.textContent).toContain('Choosing the right shape for asynchronous work in Angular');
-    expect(host.querySelector('.deck-bar')?.textContent).toContain('1 / 17');
+    expect(host.querySelector('.deck-bar')?.textContent).toContain('1 / 18');
     expect(window.location.search).toContain('presentation=true');
   });
 
@@ -84,6 +85,21 @@ describe('Full six-scenario application regression', () => {
     expect(Math.abs(app.promiseState.metrics.latestLatency - app.observableState.metrics.latestLatency)).toBeLessThan(40);
   });
 
+  it('keeps Promise and Observable code viewable in presentation demo steps', () => {
+    const app = fixture.componentInstance; app.startPresentation(); app.goToPresentationSlide(3); fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    const coreToggles = host.querySelectorAll<HTMLButtonElement>('.deck-demo-host .code-toggle');
+    expect(coreToggles).toHaveLength(2); expect(coreToggles[0]?.getAttribute('aria-expanded')).toBe('false');
+    coreToggles[0]!.click(); fixture.detectChanges();
+    expect(coreToggles[0]?.getAttribute('aria-expanded')).toBe('true');
+    expect(host.querySelector('.deck-demo-host app-code-viewer pre')?.textContent).toContain('await getUser()');
+
+    app.goToPresentationSlide(14); fixture.detectChanges();
+    const extendedToggles = host.querySelectorAll<HTMLButtonElement>('.deck-demo-host .code-toggle');
+    expect(extendedToggles).toHaveLength(2); extendedToggles[1]!.click(); fixture.detectChanges();
+    expect(host.querySelector('.deck-demo-host app-code-viewer pre')?.textContent).toContain('concatMap');
+  });
+
   it('cleans up active work when presentation exits', async () => {
     const app = fixture.componentInstance; app.startPresentation(); app.goToPresentationSlide(5); fixture.detectChanges();
     app.runBoth(); await Promise.resolve(); await vi.advanceTimersByTimeAsync(1_000);
@@ -100,6 +116,31 @@ describe('Full six-scenario application regression', () => {
     app.nextPresentationSlide(); fixture.detectChanges();
     expect(host.querySelector('.final-slide')?.textContent).toContain('It becomes powerful when time is part of the problem.');
     expect(host.querySelector('.final-slide')?.textContent).not.toContain("DON'T ASK");
+  });
+
+  it('ends on a clean Questions slide with restart, previous, exit, links, and no active work', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const app = fixture.componentInstance; app.startPresentation(); app.goToPresentationSlide(16); fixture.detectChanges();
+    app.nextPresentationSlide(); fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    expect(app.presentationSteps.at(-1)?.id).toBe('questions'); expect(app.presentationStep.id).toBe('questions');
+    expect(host.querySelector('.questions-slide')?.textContent).toContain("Promise • Observable • RxJS • Angular — let's discuss.");
+    expect(host.querySelector('.deck-bar')?.textContent).toContain('18 / 18');
+    expect(host.querySelector('.deck-next')).toBeNull();
+    expect(host.querySelector<HTMLAnchorElement>('.questions-links a:first-child')?.href).toBe('https://ffhaque.github.io/promise-observable-lab/');
+    expect(host.querySelector<HTMLAnchorElement>('.questions-links a:last-child')?.href).toBe('https://github.com/ffhaque/promise-observable-lab');
+    expect(host.querySelectorAll('.questions-slide app-comparison-panel, .questions-slide app-primary-result')).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+
+    host.querySelector<HTMLButtonElement>('.deck-previous')!.click(); fixture.detectChanges();
+    expect(app.presentationStep.id).toBe('final');
+    app.goToPresentationSlide(17); fixture.detectChanges();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' })); fixture.detectChanges();
+    expect(app.activeSlide).toBe(0); expect(app.presentationStep.id).toBe('title');
+    app.goToPresentationSlide(17); fixture.detectChanges();
+    host.querySelector<HTMLButtonElement>('.deck-exit')!.click(); fixture.detectChanges();
+    expect(app.presentationMode).toBe(false); expect(host.querySelector('.scenario-sidebar')).toBeTruthy();
+    expect(consoleError).not.toHaveBeenCalled();
   });
 
   it('supports a GitHub Pages-safe direct presentation query URL', () => {
@@ -132,6 +173,23 @@ describe('Full six-scenario application regression', () => {
     await vi.advanceTimersByTimeAsync(1_850); fixture.detectChanges();
     const lifecycle = (fixture.nativeElement as HTMLElement).querySelector('.lifecycle-journeys')?.textContent ?? '';
     expect(lifecycle).toContain('WORK CONTINUES'); expect(lifecycle).toContain('UNSUBSCRIBE'); expect(lifecycle).toContain('TEARDOWN');
+    const honesty = (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>('.honesty')!;
+    expect(getComputedStyle(honesty).display).toBe('block');
+  });
+
+  it('renders the real Rapid Selection pool contention and measured latency advantage', async () => {
+    const app = fixture.componentInstance; app.selectScenario('selection'); app.runBoth(); await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(1_900); fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    expect(host.querySelector('.promise-pool')?.textContent).toContain('CAPACITY 2 / 2');
+    expect(host.querySelector('.promise-pool')?.textContent).toContain('Jessica · Load User');
+    expect(host.querySelector('.observable-pool')?.textContent).toContain('CAPACITY 1 / 2');
+    expect(host.querySelector('.observable-pool')?.textContent).toContain('Jessica · Load User');
+    expect(host.querySelector('.observable-pool')?.textContent).toContain('David');
+    await vi.advanceTimersByTimeAsync(8_500); fixture.detectChanges();
+    expect(host.querySelector('app-primary-result')?.textContent).toContain('LATEST DASHBOARD READY');
+    expect(host.querySelector('app-primary-result .comparison')?.textContent).toContain(`${app.selectionGain}% sooner`);
+    expect(host.querySelector('.selection-explanation')?.textContent).toContain('Jessica received that capacity sooner');
   });
 
   it('preserves Promise-left, Observable-right, code disclosure, and final guide structure', () => {

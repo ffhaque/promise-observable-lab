@@ -30,8 +30,10 @@ export class MetricsPanelComponent {
         { label: 'Completed', value: m.completed }, { label: 'Cancelled', value: m.cancelled }, { label: 'Stale ignored', value: m.stale }
       ];
       case 'selection': return [
-        { label: 'Workflows started', value: m.started }, { label: 'Completed', value: m.completed },
-        { label: 'Cancelled', value: m.cancelled, primary: true }, { label: 'Stale ignored', value: m.stale, primary: true }
+        { label: 'Latest dashboard', value: m.latestLatency, unit: 'duration', primary: true },
+        { label: 'Backend work units', value: m.rowsScanned, primary: true },
+        { label: 'Work avoided', value: m.rowsAvoided }, { label: 'Workflows cancelled', value: m.cancelled },
+        { label: 'Stale ignored', value: m.stale }
       ];
       case 'dashboard': return [
         { label: 'Live status', value: m.active, primary: true }, { label: 'View updates', value: m.completed, primary: true }, { label: 'Source emissions', value: m.emitted }
