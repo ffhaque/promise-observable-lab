@@ -62,14 +62,16 @@ export class ExtendedDemoComponent implements OnChanges {
   get isRunning(): boolean { return this.promiseState.loading || this.observableState.loading; }
   get primaryResult(): { label: string; promise: string; observable: string; promiseDetail: string; observableDetail: string; comparison: string; note: string } {
     if (this.scenarioId() === 'lifecycle') {
+      const promiseStoppedAt = this.promiseState.metrics.underlyingStoppedAt;
+      const observableStoppedAt = this.observableState.metrics.underlyingStoppedAt;
       return {
-        label: 'WORK AFTER COMPONENT DESTROYED',
-        promise: this.duration(this.promiseState.metrics.workAfterOwnerDestroyed),
-        observable: this.observableState.metrics.ownerDestroyedAt ? '0 ms' : '—',
-        promiseDetail: this.promiseState.metrics.underlyingStoppedAt ? `work stopped at ${this.timelineTime(this.promiseState.metrics.underlyingStoppedAt)}` : 'non-cooperative work still running',
-        observableDetail: this.observableState.metrics.underlyingStoppedAt ? `teardown at ${this.timelineTime(this.observableState.metrics.underlyingStoppedAt)}` : 'waiting for navigation',
-        comparison: this.observableState.metrics.underlyingStoppedAt ? 'Observable-owned work stopped with its owner' : '',
-        note: 'Promise-based work can also support cooperative cancellation with an external mechanism such as AbortController.'
+        label: 'UNDERLYING WORK STOPPED AT',
+        promise: this.lifecycleTimestamp(promiseStoppedAt),
+        observable: this.lifecycleTimestamp(observableStoppedAt),
+        promiseDetail: promiseStoppedAt ? 'operation settled · stale result ignored' : this.navigatedAway ? 'work is still running after destroy' : 'request started from shared 0.00 s',
+        observableDetail: observableStoppedAt ? 'unsubscribe → teardown → stopped' : 'request started from shared 0.00 s',
+        comparison: promiseStoppedAt && observableStoppedAt ? `Observable stopped underlying work ${this.seconds(promiseStoppedAt - observableStoppedAt)} earlier` : '',
+        note: 'Both operations started at the shared 0.00 s epoch. This compares when their underlying work stopped—not how quickly a request completed.'
       };
     }
     return {
@@ -102,12 +104,19 @@ export class ExtendedDemoComponent implements OnChanges {
     this.mounted = false; this.navigatedAway = false; this.clock.restartClock(); this.cdr.markForCheck();
   }
   toggleCode(side: Side): void { const state = this.state(side); state.codeOpen = !state.codeOpen; this.cdr.markForCheck(); }
+  postDestroyWork(side: Side): string {
+    const state = this.state(side);
+    if (!state.metrics.ownerDestroyedAt) return '—';
+    if (!state.metrics.underlyingStoppedAt) return 'STILL RUNNING';
+    return this.seconds(Math.max(0, state.metrics.underlyingStoppedAt - state.metrics.ownerDestroyedAt));
+  }
+  lifecycleTimestamp(value: number): string { return value > 0 ? this.seconds(value) : '—'; }
 
   private runLifecycleSide(side: Side): void {
     this.mounted = true;
     const state = this.state(side);
     this.log(state, 'start', 'Component mounted');
-    this.begin(state, side === 'promise' ? 'Non-cooperative Promise operation started · 5 seconds' : 'Observable request subscribed · 5 seconds');
+    this.begin(state, side === 'promise' ? 'Promise request started' : 'Observable subscribed');
     if (side === 'promise') {
       const run = this.generation;
       this.handles.push(window.setTimeout(() => {
@@ -115,7 +124,7 @@ export class ExtendedDemoComponent implements OnChanges {
         state.metrics.underlyingStoppedAt = this.clock.now();
         state.metrics.workAfterOwnerDestroyed = Math.max(0, state.metrics.underlyingStoppedAt - state.metrics.ownerDestroyedAt);
         state.metrics.active = 0; state.metrics.completed++; state.loading = false;
-        if (this.navigatedAway) { state.metrics.stale++; this.log(state, 'complete', 'Promise operation settled'); this.log(state, 'ignore', 'Result ignored because component was destroyed'); }
+        if (this.navigatedAway) { state.metrics.stale++; this.log(state, 'complete', 'Promise settles · underlying work stopped'); this.log(state, 'ignore', 'Result ignored — component already destroyed'); }
         else this.complete(state, 'Product loaded', 'Product rendered');
         this.cdr.markForCheck();
       }, this.clock.scale(5000)));
@@ -123,8 +132,9 @@ export class ExtendedDemoComponent implements OnChanges {
     }
     this.subscriptions.add(this.api.observableDelay('Product loaded', 5000).pipe(finalize(() => {
       if (!state.metrics.underlyingStoppedAt) state.metrics.underlyingStoppedAt = this.clock.now();
+      if (state.metrics.ownerDestroyedAt) state.metrics.workAfterOwnerDestroyed = Math.max(0, state.metrics.underlyingStoppedAt - state.metrics.ownerDestroyedAt);
       state.loading = false; state.metrics.active = 0;
-      this.log(state, 'teardown', 'Observable teardown executed · underlying timer stopped'); this.cdr.markForCheck();
+      this.log(state, 'teardown', 'Teardown executed'); this.cdr.markForCheck();
     })).subscribe((result) => this.complete(state, result, 'Product rendered')));
   }
   private navigateAway(): void {
@@ -132,12 +142,18 @@ export class ExtendedDemoComponent implements OnChanges {
     this.navigatedAway = true; this.mounted = false;
     const destroyedAt = this.clock.now();
     this.promiseState.metrics.ownerDestroyedAt = destroyedAt; this.observableState.metrics.ownerDestroyedAt = destroyedAt;
-    if (this.promiseState.events.length) this.log(this.promiseState, 'destroy', 'Navigation away · component destroyed · Promise work continues');
+    if (this.promiseState.events.length) {
+      this.log(this.promiseState, 'destroy', 'Navigation away');
+      this.log(this.promiseState, 'destroy', 'Component destroyed');
+      this.log(this.promiseState, 'ignore', 'Promise operation continues');
+    }
     if (this.observableState.events.length) {
-      this.log(this.observableState, 'destroy', 'Navigation away · component destroyed');
+      this.log(this.observableState, 'destroy', 'Navigation away');
+      this.log(this.observableState, 'destroy', 'Component destroyed');
       this.observableState.metrics.cancelled++;
-      this.log(this.observableState, 'cancel', 'Unsubscribed at component destruction');
+      this.log(this.observableState, 'cancel', 'Unsubscribed');
       this.subscriptions.unsubscribe(); this.subscriptions = new Subscription();
+      this.log(this.observableState, 'complete', 'Underlying work stopped');
     }
     this.cdr.markForCheck();
   }
@@ -175,6 +191,7 @@ export class ExtendedDemoComponent implements OnChanges {
   private setItem(items: VisualItem[], index: number, status: ItemStatus): void { items[index] = { ...items[index]!, status }; this.cdr.markForCheck(); }
   private later(callback: () => void, ms: number): void { this.handles.push(window.setTimeout(callback, this.clock.scale(ms))); }
   private duration(ms: number): string { return ms > 0 ? `${(ms / 1000).toFixed(2)} sec` : '—'; }
+  private seconds(ms: number): string { return `${(ms / 1000).toFixed(2)} s`; }
   private timelineTime(ms: number): string { return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)} s`; }
   private managedDelay<T>(value: T, ms: number): Promise<T> { const controller = new AbortController(); this.controllers.add(controller); return this.api.delay(value, ms, controller.signal).finally(() => this.controllers.delete(controller)); }
   private cleanup(): void { this.subscriptions.unsubscribe(); this.subscriptions = new Subscription(); this.controllers.forEach((controller) => controller.abort()); this.controllers.clear(); this.handles.forEach((handle) => window.clearTimeout(handle)); this.handles = []; }

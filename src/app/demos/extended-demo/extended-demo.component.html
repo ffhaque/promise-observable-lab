@@ -8,8 +8,8 @@
   @if (scenarioId() === 'lifecycle') {
     <div class="lifecycle-state"><span>COMPONENT {{ mounted ? 'MOUNTED' : 'UNMOUNTED' }}</span><span>NAVIGATION {{ navigatedAway ? 'AWAY' : 'ACTIVE' }}</span></div>
     <div class="lifecycle-journeys" aria-label="Component lifecycle comparison">
-      <section><b>PROMISE</b><div><span class="done">MOUNT</span><i>→</i><span class="done">REQUEST</span><i>→</i><span [class.done]="navigatedAway">DESTROY</span><i>→</i><span [class.active]="navigatedAway && promiseState.loading">WORK CONTINUES</span><i>→</i><span [class.done]="promiseState.metrics.stale">RESULT IGNORED</span></div></section>
-      <section><b>OBSERVABLE</b><div><span class="done">MOUNT</span><i>→</i><span class="done">SUBSCRIBE</span><i>→</i><span [class.done]="navigatedAway">DESTROY</span><i>→</i><span [class.done]="observableState.metrics.cancelled">UNSUBSCRIBE</span><i>→</i><span [class.done]="observableState.metrics.underlyingStoppedAt">TEARDOWN</span></div></section>
+      <section class="promise-journey"><b>PROMISE · WORK LIFETIME</b><div class="lifecycle-track"><span class="done">REQUEST<br><small>0.00 s</small></span><i>→</i><span [class.done]="navigatedAway">DESTROY<br><small>{{ lifecycleTimestamp(promiseState.metrics.ownerDestroyedAt) }}</small></span><i class="continuation" [class.active]="navigatedAway && promiseState.loading">→ WORK CONTINUES →</i><span [class.done]="promiseState.metrics.underlyingStoppedAt">STOPPED<br><small>{{ lifecycleTimestamp(promiseState.metrics.underlyingStoppedAt) }}</small></span></div><p [class.active]="navigatedAway">↳ {{ postDestroyWork('promise') }} unnecessary work after component destruction</p></section>
+      <section class="observable-journey"><b>OBSERVABLE · OWNED LIFETIME</b><div class="lifecycle-track"><span class="done">REQUEST<br><small>0.00 s</small></span><i>→</i><span [class.done]="navigatedAway">DESTROY<br><small>{{ lifecycleTimestamp(observableState.metrics.ownerDestroyedAt) }}</small></span><i>→</i><span [class.done]="observableState.metrics.cancelled">UNSUBSCRIBE</span><i>→</i><span [class.done]="observableState.metrics.underlyingStoppedAt">TEARDOWN<br><small>{{ lifecycleTimestamp(observableState.metrics.underlyingStoppedAt) }}</small></span></div><p [class.done]="observableState.metrics.underlyingStoppedAt">■ Work stopped at component destruction</p></section>
     </div>
   }
 
@@ -19,6 +19,14 @@
   </div>
 
   <app-primary-result [label]="primaryResult.label" [promiseValue]="primaryResult.promise" [observableValue]="primaryResult.observable" [promiseDetail]="primaryResult.promiseDetail" [observableDetail]="primaryResult.observableDetail" [comparison]="primaryResult.comparison" [note]="primaryResult.note" />
+
+  @if (scenarioId() === 'lifecycle') {
+    <section class="post-destroy-result" aria-label="Work after component destroyed">
+      <header>WORK AFTER COMPONENT DESTROYED</header>
+      <div><article><span><i class="promise-dot"></i>PROMISE</span><strong>{{ postDestroyWork('promise') }}</strong></article><article><span><i class="observable-dot"></i>OBSERVABLE</span><strong>{{ postDestroyWork('observable') }}</strong></article></div>
+      <p>Observable shows <b>0.00 s</b> of post-destroy work because teardown occurs at the destruction event. This is not the Observable's total request duration.</p>
+    </section>
+  }
 
   @if (scenarioId() === 'sequential') {
     <div class="sequential-code" aria-label="Sequential workflow code comparison">

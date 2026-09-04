@@ -43,6 +43,34 @@ describe('ExtendedDemoComponent timing semantics', () => {
     expect(promiseComplete.timestampMs).toBeGreaterThan(promiseDestroy.timestampMs + 3_000);
   });
 
+  it('presents stop time separately from same-unit post-destroy work', async () => {
+    const demo = create('lifecycle'); demo.runBoth(); await vi.advanceTimersByTimeAsync(5_100); fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    const primary = host.querySelector('app-primary-result')?.textContent ?? '';
+    expect(primary).toContain('UNDERLYING WORK STOPPED AT');
+    expect(primary).toContain('5.00 s'); expect(primary).toContain('1.80 s');
+    expect(primary).toContain('not how quickly a request completed');
+    const secondaryValues = Array.from(host.querySelectorAll<HTMLElement>('.post-destroy-result article strong'), (node) => node.textContent?.trim());
+    expect(secondaryValues).toEqual(['3.20 s', '0.00 s']);
+    expect(host.querySelector('.post-destroy-result')?.textContent).toContain("not the Observable's total request duration");
+  });
+
+  it('records each lifecycle transition at its actual shared-clock time', async () => {
+    const demo = create('lifecycle'); demo.runBoth(); await vi.advanceTimersByTimeAsync(5_100);
+    expect(demo.promiseState.events.map((event) => event.message)).toEqual([
+      'Component mounted', 'Promise request started', 'Navigation away', 'Component destroyed',
+      'Promise operation continues', 'Promise settles · underlying work stopped', 'Result ignored — component already destroyed'
+    ]);
+    expect(demo.observableState.events.map((event) => event.message)).toEqual([
+      'Component mounted', 'Observable subscribed', 'Navigation away', 'Component destroyed',
+      'Unsubscribed', 'Teardown executed', 'Underlying work stopped'
+    ]);
+    const observableStopped = demo.observableState.events.find((event) => event.message === 'Underlying work stopped')!;
+    const promiseStopped = demo.promiseState.events.find((event) => event.message.startsWith('Promise settles'))!;
+    expect(observableStopped.timestampMs).toBeCloseTo(demo.observableState.metrics.underlyingStoppedAt, 5);
+    expect(promiseStopped.timestampMs).toBeCloseTo(demo.promiseState.metrics.underlyingStoppedAt, 5);
+  });
+
   it('completes equivalent sequential stages in order and at approximately equal times', async () => {
     const demo = create('sequential'); demo.runBoth(); await vi.advanceTimersByTimeAsync(2_150);
     expect(demo.promiseItems.map((item) => item.status)).toEqual(['complete', 'complete', 'complete']);
